@@ -29,10 +29,6 @@ IT_SPECIALTIES = {
     "💻 Backend-Разработчик": "Backend",
     "🎨 Frontend-Разработчик": "Frontend",
     "👨‍💻 Fullstack": "Full Stack",
-
-
-
-
     
     "📊 Data-Аналитик": "Data Analyst",
     "🗄️ Админ-БД": "Базы данных",
@@ -440,7 +436,7 @@ ABOUT_PROJECT = """
 
 📊 СТАТИСТИКА ПРОЕКТА:
 • Доступно специальностей: 30
-•  Добавлено специальностей: 4
+• Добавлено специальностей: 4
 • Только технические IT-направления
 • Актуальные данные 2026 года
 
@@ -459,9 +455,6 @@ ABOUT_PROJECT = """
 ✏️ Проекты для портфолио
 
 📈 Карьерный рост и перспективы
-
-
-
 
 🤔 КАК МЫ БУДЕМ РАЗВИВАТЬСЯ?
 
@@ -805,8 +798,7 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать статистику бота (только для админа)"""
     user_id = update.effective_user.id
     
-    # ⚠️ ЗАМЕНИТЕ НА ВАШ ID! Узнайте через @userinfobot
-    ADMIN_ID = 6705969870  # ⬅️⬅️⬅️ ВСТАВЬТЕ ВАШ ID ЗДЕСЬ!
+    ADMIN_ID = 6705969870
     
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ Эта команда только для администратора.")
@@ -872,8 +864,7 @@ async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Показать детальную статистику за 30 дней"""
     user_id = update.effective_user.id
     
-    # ⚠️ ЗАМЕНИТЕ НА ВАШ ID!
-    ADMIN_ID = 6705969870  # ⬅️⬅️⬅️ ВСТАВЬТЕ ВАШ ID ЗДЕСЬ!
+    ADMIN_ID = 6705969870
     
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ Эта команда только для администратора.")
@@ -888,16 +879,17 @@ async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
         message = "📈 *ДЕТАЛЬНАЯ СТАТИСТИКА (30 дней)*\n\n"
         
         message += f"📊 *Итого за 30 дней:*\n"
-        message += f"   • Новых пользователей: {monthly_stats['total_new']}\n"
-        message += f"   • В среднем активных: {monthly_stats['avg_active']}/день\n"
-        message += f"   • Всего просмотров: {monthly_stats['total_views']}\n\n"
+        message += f"   • 📥 Новых пользователей: {monthly_stats['total_new']}\n"
+        message += f"   • 📊 В среднем активных: {monthly_stats['avg_active']}/день\n"
+        message += f"   • 👀 Всего просмотров: {monthly_stats['total_views']}\n\n"
         
         if daily_data:
-            message += "📅 *Последние 10 дней:*\n"
-            for date_str, new_users, active_users, total_views in daily_data[:10]:
+            message += "📅 *Последние 7 дней:*\n"
+            for date_str, new_users, active_users, total_views in daily_data[:7]:
                 message += f"• *{date_str}:* +{new_users} новых, {active_users} активных, {total_views} просмотров\n"
         else:
-            message += "📅 Нет данных за последние дни\n"
+            message += "📅 *Пока нет данных за последние дни*\n"
+            message += "Бот только запущен, статистика появится через 1-2 дня\n"
         
         # Статистика роста
         stats = get_user_stats()
@@ -907,8 +899,10 @@ async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
             growth_rate = (monthly_stats['total_new'] / total_users) * 100
             message += f"\n📈 *Рост за месяц:* +{growth_rate:.1f}%\n"
         
-        message += "\n💡 *Совет:* Бот оптимизирован для 1000+ пользователей.\n"
-        message += "Для работы 24/7 задеплойте на Railway.app или PythonAnywhere"
+        message += "\n📊 *Техническая информация:*\n"
+        message += "• База данных: SQLite (WAL режим)\n"
+        message += "• Оптимизировано для 1000+ пользователей\n"
+        message += "• Автоматическое резервное копирование\n"
         
         keyboard = [
             ["📊 Основная статистика", "🔄 Обновить"],
@@ -972,7 +966,7 @@ async def show_about_project(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда помощи - ОБНОВЛЕННЫЙ ТЕКСТ"""
+    """Команда помощи"""
     keyboard = [
         ["🎯 Выбрать специальность", "📋 О проекте"],
         ["🏠 Главная"]
@@ -1095,6 +1089,17 @@ async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик фотографий"""
+    await update.message.reply_text(
+        "😔 Увы, я пока что не умею обрабатывать фотографии!\n\n"
+        "Но я отлично справляюсь с текстом:\n"
+        "• Выбирайте IT-специальности 🎯\n"
+        "• Читайте подробную информацию 📚\n"
+        "• Изучайте планы обучения 🚀\n\n"
+        "👇 Используйте кнопки меню или напишите /start"
+    )
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик сообщений"""
     text = update.message.text
@@ -1154,6 +1159,7 @@ def main():
     
     app = Application.builder().token(TOKEN).build()
     
+    # Добавляем обработчики команд
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", show_help))
     app.add_handler(CommandHandler("about", show_about_project))
@@ -1161,6 +1167,10 @@ def main():
     app.add_handler(CommandHandler("stats", show_stats))
     app.add_handler(CommandHandler("detailed_stats", show_detailed_stats))
     
+    # Добавляем обработчик фотографий
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    
+    # Обработчик текстовых сообщений (должен быть последним!)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Красивое оформление при запуске (в консоли)
@@ -1209,10 +1219,6 @@ def main():
     print("   • Индексы для быстрого поиска")
     print("   • Ежедневная статистика")
     print("   • Подробная аналитика")
-    print()
-    print("🚀 ДЛЯ РАБОТЫ 24/7:")
-    print("   • Задеплойте на Railway.app (рекомендую)")
-    print("   • Или на PythonAnywhere/Heroku")
     print("   • Не забудьте заменить ADMIN_ID на ваш Telegram ID!")
     print()
     print("=" * 60)
@@ -1227,9 +1233,4 @@ def main():
         input("Нажмите Enter для выхода...")
 
 if __name__ == "__main__":
-
     main()
-
-
-
-
