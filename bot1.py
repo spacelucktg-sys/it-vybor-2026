@@ -29,6 +29,11 @@ IT_SPECIALTIES = {
     "💻 Backend-Разработчик": "Backend",
     "🎨 Frontend-Разработчик": "Frontend",
     "👨‍💻 Fullstack": "Full Stack",
+
+
+
+
+    
     "📊 Data-Аналитик": "Data Analyst",
     "🗄️ Админ-БД": "Базы данных",
     "🎨 UI/UX-Дизайнер": "UI/UX дизайн",
@@ -801,7 +806,7 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     # ⚠️ ЗАМЕНИТЕ НА ВАШ ID! Узнайте через @userinfobot
-    ADMIN_ID = 123456789  # ⬅️⬅️⬅️ ВСТАВЬТЕ ВАШ ID ЗДЕСЬ!
+    ADMIN_ID = 6705969870  # ⬅️⬅️⬅️ ВСТАВЬТЕ ВАШ ID ЗДЕСЬ!
     
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ Эта команда только для администратора.")
@@ -1222,4 +1227,5 @@ def main():
         input("Нажмите Enter для выхода...")
 
 if __name__ == "__main__":
+
     main()
