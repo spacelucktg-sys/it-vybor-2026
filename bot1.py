@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Отключаем проверку SSL (решение проблемы с Python из Microsoft Store)
 ssl._create_default_https_context = ssl._create_unverified_context
 
-TOKEN = "8553151496:AAHmmocB0UA9SC5cmva3xJFMS6EV4gkqqdk"
+TOKEN = "8553151496:AAHc5Xerfl4Nd7PWfYIW1xg626hmIprwbNs"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -1229,3 +1229,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
