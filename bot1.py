@@ -3,16 +3,6 @@ import logging
 import ssl
 import sqlite3
 from datetime import datetime
-# Костыль для imghdr в Python 3.13
-import sys
-if sys.version_info >= (3, 13):
-    import types
-    sys.modules['imghdr'] = types.ModuleType('imghdr')
-    
-    # Добавляем минимальную функциональность
-    def imghdr_what(file):
-        return None
-    sys.modules['imghdr'].what = imghdr_what
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -1239,5 +1229,6 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
