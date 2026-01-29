@@ -873,7 +873,7 @@ async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     
     # ⚠️ ЗАМЕНИТЕ НА ВАШ ID!
-    ADMIN_ID = 123456789  # ⬅️⬅️⬅️ ВСТАВЬТЕ ВАШ ID ЗДЕСЬ!
+    ADMIN_ID = 6705969870  # ⬅️⬅️⬅️ ВСТАВЬТЕ ВАШ ID ЗДЕСЬ!
     
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ Эта команда только для администратора.")
@@ -1229,6 +1229,7 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
 
