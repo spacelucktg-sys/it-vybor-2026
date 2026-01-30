@@ -2,7 +2,9 @@
 import logging
 import ssl
 import sqlite3
+import threading
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -15,6 +17,34 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+# ========== HTTP СЕРВЕР ДЛЯ RENDER ==========
+
+class HealthHandler(BaseHTTPRequestHandler):
+    """Обработчик HTTP запросов для проверки здоровья"""
+    def do_GET(self):
+        if self.path == '/healthz' or self.path == '/':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'Bot is running on Render')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        pass  # Отключаем логи запросов
+
+def start_health_server():
+    """Запуск HTTP сервера для Render"""
+    try:
+        server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
+        print(f"✅ HTTP сервер запущен на порту 8080")
+        server.serve_forever()
+    except Exception as e:
+        print(f"❌ Ошибка запуска HTTP сервера: {e}")
+
+# ========== ОСНОВНОЙ КОД БОТА ==========
 
 # 🔥 ТОЛЬКО ТЕХНИЧЕСКИЕ IT-СПЕЦИАЛЬНОСТИ
 IT_SPECIALTIES = {
@@ -1157,6 +1187,10 @@ def main():
     # Инициализируем базу данных
     init_database()
     
+    # Запускаем HTTP сервер для Render в отдельном потоке
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    
     app = Application.builder().token(TOKEN).build()
     
     # Добавляем обработчики команд
@@ -1221,6 +1255,11 @@ def main():
     print("   • Подробная аналитика")
     print("   • Не забудьте заменить ADMIN_ID на ваш Telegram ID!")
     print()
+    print("🌐 HTTP СЕРВЕР ДЛЯ RENDER:")
+    print("   • Порт: 8080")
+    print("   • Health check: /healthz")
+    print("   • Отвечает на запросы Render")
+    print()
     print("=" * 60)
     print("⚡ Бот запущен и готов к работе!")
     print("=" * 60)
@@ -1230,8 +1269,6 @@ def main():
     except Exception as e:
         print(f"❌ Ошибка запуска бота: {e}")
         print("🔄 Попробуйте перезапустить бота...")
-        input("Нажмите Enter для выхода...")
 
 if __name__ == "__main__":
     main()
-
