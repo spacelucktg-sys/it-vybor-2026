@@ -3,10 +3,11 @@ import logging
 import ssl
 import sqlite3
 import threading
+import json
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 # Отключаем проверку SSL (решение проблемы с Python из Microsoft Store)
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -399,7 +400,7 @@ GitHub: https://github.com/ageron/handson-ml2
 
 ---
 
-🚀 ПЛАН ОБУЧЕНИя (10-12 месяцев):
+🚀 ПЛАН ОБУЧЕНИЯ (10-12 месяцев):
 1. Основы сетей + Linux (2 месяца)
 2. Программирование (Python) (2 месяца)
 3. Web уязвимости (3 месяца)
@@ -512,6 +513,253 @@ ABOUT_PROJECT = """
 
 🚀 Остальные специальности добавляются постепенно."""
 
+# ========== ТЕСТ ДЛЯ ВЫБОРА IT-ПРОФЕССИИ ==========
+
+TEST_QUESTIONS = {
+    "module1": {
+        "name": "Личные предпочтения",
+        "questions": {
+            "q1": {
+                "text": "🎯 Как бы вы предпочли работать?",
+                "options": {
+                    "1": "🎨 В одиночку, сосредоточенно над одной задачей",
+                    "2": "👥 В команде, общаясь и обсуждая идеи",
+                    "3": "📊 Анализируя данные и выявляя закономерности",
+                    "4": "🔧 Решая конкретные технические проблемы",
+                    "5": "🎭 В динамичной среде с частыми изменениями"
+                },
+                "weights": {
+                    "1": {"frontend": 2, "backend": 1, "qa": 3},
+                    "2": {"frontend": 3, "backend": 2, "devops": 1},
+                    "3": {"data": 3, "ai": 2, "backend": 1},
+                    "4": {"backend": 3, "devops": 2, "cyber": 2},
+                    "5": {"frontend": 2, "devops": 3, "qa": 1}
+                }
+            },
+            "q2": {
+                "text": "🎯 Что вам интереснее?",
+                "options": {
+                    "1": "Создавать что-то видимое и красивое",
+                    "2": "Продумывать логику и архитектуру систем",
+                    "3": "Находить скрытые взаимосвязи в информации",
+                    "4": "Оптимизировать и улучшать существующие системы",
+                    "5": "Помогать людям решать технические проблемы"
+                },
+                "weights": {
+                    "1": {"frontend": 3, "design": 3},
+                    "2": {"backend": 3, "fullstack": 2},
+                    "3": {"data": 3, "ai": 2},
+                    "4": {"devops": 3, "backend": 2},
+                    "5": {"qa": 3, "support": 2}
+                }
+            },
+            "q3": {
+                "text": "🎯 Какой подход вам ближе?",
+                "options": {
+                    "1": "🎨 Креативный, дизайнерский",
+                    "2": "⚙️ Системный, логический",
+                    "3": "🔍 Аналитический, исследовательский",
+                    "4": "🛠 Практический, прикладной",
+                    "5": "💬 Коммуникативный, объясняющий"
+                },
+                "weights": {
+                    "1": {"frontend": 3, "design": 3},
+                    "2": {"backend": 3, "devops": 2},
+                    "3": {"data": 3, "ai": 2},
+                    "4": {"mobile": 2, "embedded": 3},
+                    "5": {"qa": 2, "management": 3}
+                }
+            }
+        }
+    },
+    "module2": {
+        "name": "Навыки и способности",
+        "questions": {
+            "q4": {
+                "text": "🎯 Ваше отношение к математике:",
+                "options": {
+                    "1": "😫 Стараюсь избегать",
+                    "2": "😐 Могу использовать основы",
+                    "3": "🤔 Нравится логика и алгоритмы",
+                    "4": "🧮 Уверенно работаю с числами",
+                    "5": "📈 Обожаю сложные вычисления и статистику"
+                },
+                "weights": {
+                    "1": {"frontend": 1, "design": 1},
+                    "2": {"frontend": 2, "mobile": 2},
+                    "3": {"backend": 2, "devops": 2},
+                    "4": {"data": 3, "backend": 2},
+                    "5": {"ai": 3, "data": 3}
+                }
+            },
+            "q5": {
+                "text": "🎯 Как вы воспринимаете визуальную информацию?",
+                "options": {
+                    "1": "👁 Замечаю мелкие детали и несоответствия",
+                    "2": "🎨 Вижу общую гармонию и цветовые сочетания",
+                    "3": "📐 Мыслю в терминах структур и схем",
+                    "4": "📊 Легко читаю графики и диаграммы",
+                    "5": "🎯 Фокусируюсь на функциональности, а не на красоте"
+                },
+                "weights": {
+                    "1": {"qa": 3, "frontend": 2},
+                    "2": {"design": 3, "frontend": 2},
+                    "3": {"backend": 3, "devops": 2},
+                    "4": {"data": 3, "ai": 2},
+                    "5": {"backend": 2, "devops": 3}
+                }
+            },
+            "q6": {
+                "text": "🎯 Ваш уровень английского:",
+                "options": {
+                    "1": "❌ Базовый или отсутствует",
+                    "2": "📚 Читаю со словарем",
+                    "3": "📖 Свободно читаю документацию",
+                    "4": "💬 Могу общаться на технические темы",
+                    "5": "🗣 Свободно говорю и пишу"
+                },
+                "weights": {
+                    "1": {"all": 1},
+                    "2": {"all": 2},
+                    "3": {"all": 3},
+                    "4": {"all": 4},
+                    "5": {"all": 5}
+                }
+            }
+        }
+    },
+    "module3": {
+        "name": "Практические предпочтения",
+        "questions": {
+            "q7": {
+                "text": "🎯 Какой процесс вам интереснее?",
+                "options": {
+                    "1": "Проектировать интерфейсы → тестировать → улучшать",
+                    "2": "Писать код → тестировать → исправлять ошибки",
+                    "3": "Собирать данные → анализировать → делать выводы",
+                    "4": "Мониторить системы → находить проблемы → оптимизировать",
+                    "5": "Общаться с пользователями → понимать проблемы → предлагать решения"
+                },
+                "weights": {
+                    "1": {"frontend": 3, "design": 2},
+                    "2": {"backend": 3, "mobile": 2},
+                    "3": {"data": 3, "ai": 2},
+                    "4": {"devops": 3, "sre": 2},
+                    "5": {"qa": 3, "support": 2}
+                }
+            },
+            "q8": {
+                "text": "🎯 Какие проекты привлекают?",
+                "options": {
+                    "1": "Веб-сайты и мобильные приложения",
+                    "2": "Сервисы и платформы",
+                    "3": "Системы аналитики и прогнозирования",
+                    "4": "Инфраструктура и сети",
+                    "5": "Документация и обучение"
+                },
+                "weights": {
+                    "1": {"frontend": 3, "mobile": 3},
+                    "2": {"backend": 3, "fullstack": 2},
+                    "3": {"data": 3, "ai": 2},
+                    "4": {"devops": 3, "cyber": 2},
+                    "5": {"qa": 2, "support": 3}
+                }
+            },
+            "q9": {
+                "text": "🎯 Сколько времени готовы уделять обучению:",
+                "options": {
+                    "1": "2-4 часа в неделю",
+                    "2": "5-10 часов в неделю",
+                    "3": "10-20 часов в неделю",
+                    "4": "20-30 часов в неделю",
+                    "5": "Готов погрузиться полностью (30+ часов)"
+                },
+                "weights": {
+                    "1": {"all": 1},
+                    "2": {"all": 2},
+                    "3": {"all": 3},
+                    "4": {"all": 4},
+                    "5": {"all": 5}
+                }
+            }
+        }
+    },
+    "module4": {
+        "name": "Цели и ожидания",
+        "questions": {
+            "q10": {
+                "text": "🎯 Когда хотите начать работать?",
+                "options": {
+                    "1": "📅 Через 3-6 месяцев",
+                    "2": "📅 Через 6-12 месяцев",
+                    "3": "📅 Через 1-2 года",
+                    "4": "📅 Не ограничен по времени, хочу основательно изучить",
+                    "5": "💼 Уже ищу возможности для стажировки"
+                },
+                "weights": {
+                    "1": {"frontend": 3, "mobile": 2},
+                    "2": {"all": 2},
+                    "3": {"data": 2, "ai": 3},
+                    "4": {"all": 1},
+                    "5": {"all": 3}
+                }
+            },
+            "q11": {
+                "text": "🎯 Какие зарплатные ожидания через 1-2 года?",
+                "options": {
+                    "1": "₽ 50-80 тыс. (начальный уровень)",
+                    "2": "₽ 80-120 тыс. (джун)",
+                    "3": "₽ 120-200 тыс. (мидл)",
+                    "4": "₽ 200-350 тыс. (сеньор)",
+                    "5": "💎 350+ тыс. (эксперт/архитектор)"
+                },
+                "weights": {
+                    "1": {"all": 1},
+                    "2": {"all": 2},
+                    "3": {"all": 3},
+                    "4": {"ai": 3, "data": 3, "devops": 3},
+                    "5": {"ai": 5, "cyber": 4, "sre": 4}
+                }
+            },
+            "q12": {
+                "text": "🎯 Что важно в карьере?",
+                "options": {
+                    "1": "⚡️ Быстрый старт и первые деньги",
+                    "2": "📈 Постепенный рост и стабильность",
+                    "3": "🎯 Глубокий экспертиз в конкретной области",
+                    "4": "👨‍💼 Управление командой/проектами",
+                    "5": "🚀 Создание своего продукта/стартапа"
+                },
+                "weights": {
+                    "1": {"frontend": 3, "mobile": 2},
+                    "2": {"backend": 2, "qa": 3},
+                    "3": {"ai": 3, "data": 3, "cyber": 3},
+                    "4": {"all": 2},
+                    "5": {"all": 1}
+                }
+            }
+        }
+    }
+}
+
+# Маппинг специальностей по категориям
+SPECIALTY_CATEGORIES = {
+    "frontend": ["🎨 Frontend-Разработчик", "🌐 Веб-Разработчик", "⚛️ React", "📱 React-Native", "📱 Flutter"],
+    "backend": ["💻 Backend-Разработчик", "🐍 Python-Разработчик", "☕ Java-Разработчик", "🚀 Node.js", "🦀 Rust-Разработчик", "🔄 Go-Разработчик"],
+    "data": ["📊 Data-Аналитик", "🤖 Data-Science", "🗄️ Админ-БД"],
+    "ai": ["🧠 AI/ML-Инженер", "👁️ Computer-Vision", "💬 NLP-Инженер"],
+    "devops": ["⚙️ DevOps-Инженер", "☁️ Cloud-Инженер", "⚡ SRE-Инженер", "📡 Сетевой-Инженер"],
+    "cyber": ["🔒 Кибербезопасность", "🔐 Pentester"],
+    "mobile": ["📱 Мобильный-Разработчик", "📱 Flutter", "📱 React-Native"],
+    "qa": ["🧪 QA-Инженер"],
+    "design": ["🎨 UI/UX-Дизайнер"],
+    "fullstack": ["👨‍💻 Fullstack"],
+    "gamedev": ["🎮 GameDev"],
+    "embedded": ["🔧 Embedded"],
+    "blockchain": ["🤖 Blockchain"],
+    "support": ["Все специальности"]  # Общая категория
+}
+
 # ========== УЛУЧШЕННАЯ БАЗА ДАННЫХ ==========
 
 def init_database():
@@ -577,6 +825,37 @@ def init_database():
     ''')
     
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_date ON daily_stats(date);')
+    
+    # Таблица для результатов тестов
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS test_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        test_date TIMESTAMP,
+        results TEXT,  -- JSON с результатами
+        recommended_specialties TEXT,  -- JSON с рекомендациями
+        test_time_seconds INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
+    )
+    ''')
+    
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_test_user_id ON test_results(user_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_test_date ON test_results(test_date);')
+    
+    # Таблица для прогресса тестов
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS test_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER UNIQUE,
+        current_module TEXT,
+        current_question TEXT,
+        answers TEXT,  -- JSON с ответами
+        start_time TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
+    )
+    ''')
+    
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_progress_user_id ON test_progress(user_id);')
     
     conn.commit()
     conn.close()
@@ -672,6 +951,116 @@ def increment_specialty_view(specialty_name):
     finally:
         conn.close()
 
+def save_test_progress(user_id, module, question, answers):
+    """Сохранение прогресса теста"""
+    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    try:
+        answers_json = json.dumps(answers, ensure_ascii=False)
+        
+        cursor.execute('''
+        INSERT OR REPLACE INTO test_progress 
+        (user_id, current_module, current_question, answers, start_time)
+        VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, module, question, answers_json, now))
+        
+        conn.commit()
+        
+    except sqlite3.Error as e:
+        print(f"❌ Ошибка базы данных при сохранении прогресса теста: {e}")
+    finally:
+        conn.close()
+
+def get_test_progress(user_id):
+    """Получение прогресса теста"""
+    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('SELECT * FROM test_progress WHERE user_id = ?', (user_id,))
+        result = cursor.fetchone()
+        
+        if result:
+            return {
+                'id': result[0],
+                'user_id': result[1],
+                'current_module': result[2],
+                'current_question': result[3],
+                'answers': json.loads(result[4]) if result[4] else {},
+                'start_time': result[5]
+            }
+        return None
+        
+    except sqlite3.Error as e:
+        print(f"❌ Ошибка базы данных при получении прогресса теста: {e}")
+        return None
+    finally:
+        conn.close()
+
+def delete_test_progress(user_id):
+    """Удаление прогресса теста"""
+    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('DELETE FROM test_progress WHERE user_id = ?', (user_id,))
+        conn.commit()
+        
+    except sqlite3.Error as e:
+        print(f"❌ Ошибка базы данных при удалении прогресса теста: {e}")
+    finally:
+        conn.close()
+
+def save_test_result(user_id, results, recommended_specialties, test_time):
+    """Сохранение результатов теста"""
+    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    try:
+        results_json = json.dumps(results, ensure_ascii=False)
+        specialties_json = json.dumps(recommended_specialties, ensure_ascii=False)
+        
+        cursor.execute('''
+        INSERT INTO test_results 
+        (user_id, test_date, results, recommended_specialties, test_time_seconds)
+        VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, now, results_json, specialties_json, test_time))
+        
+        conn.commit()
+        
+    except sqlite3.Error as e:
+        print(f"❌ Ошибка базы данных при сохранении результатов теста: {e}")
+    finally:
+        conn.close()
+
+def get_user_test_history(user_id):
+    """Получение истории тестов пользователя"""
+    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+        SELECT test_date, recommended_specialties 
+        FROM test_results 
+        WHERE user_id = ? 
+        ORDER BY test_date DESC 
+        LIMIT 5
+        ''', (user_id,))
+        
+        history = cursor.fetchall()
+        return history
+        
+    except sqlite3.Error as e:
+        print(f"❌ Ошибка базы данных при получении истории тестов: {e}")
+        return []
+    finally:
+        conn.close()
+
 def get_user_stats():
     """Получение статистики пользователей (оптимизированная)"""
     conn = sqlite3.connect('bot_users.db', check_same_thread=False)
@@ -709,6 +1098,10 @@ def get_user_stats():
         total_views_result = cursor.fetchone()[0]
         total_views = total_views_result if total_views_result else 0
         
+        # Статистика тестов
+        cursor.execute('SELECT COUNT(*) FROM test_results')
+        total_tests = cursor.fetchone()[0] or 0
+        
         # Самые активные пользователи
         cursor.execute('''
         SELECT username, first_name, last_name, visit_count 
@@ -724,6 +1117,7 @@ def get_user_stats():
             'active_week': active_week,
             'today_new': today_new,
             'total_views': total_views,
+            'total_tests': total_tests,
             'top_users': top_users
         }
         
@@ -735,6 +1129,7 @@ def get_user_stats():
             'active_week': 0,
             'today_new': 0,
             'total_views': 0,
+            'total_tests': 0,
             'top_users': []
         }
     finally:
@@ -762,68 +1157,6 @@ def get_popular_specialties(limit=10):
     finally:
         conn.close()
 
-def get_recent_users(limit=20):
-    """Получение последних пользователей"""
-    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-        SELECT user_id, username, first_name, last_name, last_visit, visit_count
-        FROM users 
-        ORDER BY last_visit DESC 
-        LIMIT ?
-        ''', (limit,))
-        
-        users = cursor.fetchall()
-        return users
-        
-    except sqlite3.Error as e:
-        print(f"❌ Ошибка базы данных при получении пользователей: {e}")
-        return []
-    finally:
-        conn.close()
-
-def get_daily_stats(days=7):
-    """Получение статистики за несколько дней"""
-    conn = sqlite3.connect('bot_users.db', check_same_thread=False)
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-        SELECT date, new_users, active_users, total_views 
-        FROM daily_stats 
-        WHERE date >= date('now', ?) 
-        ORDER BY date DESC
-        ''', (f'-{days} days',))
-        
-        daily_data = cursor.fetchall()
-        
-        # Суммарная статистика
-        cursor.execute('''
-        SELECT 
-            COALESCE(SUM(new_users), 0),
-            COALESCE(AVG(active_users), 0),
-            COALESCE(SUM(total_views), 0)
-        FROM daily_stats 
-        WHERE date >= date('now', ?)
-        ''', (f'-{days} days',))
-        
-        totals = cursor.fetchone()
-        
-        return {
-            'daily_data': daily_data,
-            'total_new': totals[0] if totals else 0,
-            'avg_active': round(totals[1], 1) if totals else 0,
-            'total_views': totals[2] if totals else 0
-        }
-        
-    except sqlite3.Error as e:
-        print(f"❌ Ошибка базы данных при получении ежедневной статистики: {e}")
-        return {'daily_data': [], 'total_new': 0, 'avg_active': 0, 'total_views': 0}
-    finally:
-        conn.close()
-
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать статистику бота (только для админа)"""
     user_id = update.effective_user.id
@@ -837,8 +1170,6 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Получаем статистику
     stats = get_user_stats()
     popular_specialties = get_popular_specialties(10)
-    recent_users = get_recent_users(15)
-    weekly_stats = get_daily_stats(7)
     
     # Формируем сообщение со статистикой
     message = "📊 *СТАТИСТИКА БОТА*\n\n"
@@ -846,40 +1177,14 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message += f"📈 *Активных за 24 часа:* {stats['active_today']}\n"
     message += f"📊 *Активных за 7 дней:* {stats['active_week']}\n"
     message += f"🆕 *Новых сегодня:* {stats['today_new']}\n"
-    message += f"👀 *Всего просмотров:* {stats['total_views']}\n\n"
-    
-    message += f"📈 *За последние 7 дней:*\n"
-    message += f"   • Новых: {weekly_stats['total_new']}\n"
-    message += f"   • В среднем активных: {weekly_stats['avg_active']}/день\n"
-    message += f"   • Просмотров: {weekly_stats['total_views']}\n\n"
+    message += f"👀 *Всего просмотров:* {stats['total_views']}\n"
+    message += f"🧪 *Пройдено тестов:* {stats['total_tests']}\n\n"
     
     message += "🔥 *Топ-10 популярных специальностей:*\n"
     for i, (specialty, count) in enumerate(popular_specialties, 1):
         message += f"{i}. {specialty}: {count} просмотров\n"
     
-    message += "\n👤 *Последние 15 пользователей:*\n"
-    for user in recent_users:
-        user_id, username, first_name, last_name, last_visit, visit_count = user
-        name = f"{first_name or ''} {last_name or ''}".strip()
-        if username:
-            name = f"@{username}" if not name else f"{name} (@{username})"
-        else:
-            name = name or f"ID: {user_id}"
-        # Форматируем дату
-        visit_date = last_visit[:16] if last_visit else ""
-        message += f"• {name} ({visit_count}) - {visit_date}\n"
-    
-    message += "\n🏆 *Топ-5 активных пользователей:*\n"
-    for i, (username, first_name, last_name, visits) in enumerate(stats['top_users'], 1):
-        name = f"{first_name or ''} {last_name or ''}".strip()
-        if username:
-            name = f"@{username}" if not name else f"{name} (@{username})"
-        else:
-            name = name or "Аноним"
-        message += f"{i}. {name}: {visits} посещений\n"
-    
     keyboard = [
-        ["📈 Детальная статистика", "🔄 Обновить"],
         ["🏠 Главная"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -889,104 +1194,50 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать детальную статистику за 30 дней"""
-    user_id = update.effective_user.id
-    
-    ADMIN_ID = 6705969870
-    
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Эта команда только для администратора.")
-        return
-    
-    try:
-        # Получаем данные за 30 дней
-        monthly_stats = get_daily_stats(30)
-        daily_data = monthly_stats['daily_data']
-        
-        # Формируем сообщение
-        message = "📈 *ДЕТАЛЬНАЯ СТАТИСТИКА (30 дней)*\n\n"
-        
-        message += f"📊 *Итого за 30 дней:*\n"
-        message += f"   • 📥 Новых пользователей: {monthly_stats['total_new']}\n"
-        message += f"   • 📊 В среднем активных: {monthly_stats['avg_active']}/день\n"
-        message += f"   • 👀 Всего просмотров: {monthly_stats['total_views']}\n\n"
-        
-        if daily_data:
-            message += "📅 *Последние 7 дней:*\n"
-            for date_str, new_users, active_users, total_views in daily_data[:7]:
-                message += f"• *{date_str}:* +{new_users} новых, {active_users} активных, {total_views} просмотров\n"
-        else:
-            message += "📅 *Пока нет данных за последние дни*\n"
-            message += "Бот только запущен, статистика появится через 1-2 дня\n"
-        
-        # Статистика роста
-        stats = get_user_stats()
-        total_users = stats['total_users']
-        
-        if total_users > 0 and monthly_stats['total_new'] > 0:
-            growth_rate = (monthly_stats['total_new'] / total_users) * 100
-            message += f"\n📈 *Рост за месяц:* +{growth_rate:.1f}%\n"
-        
-        message += "\n📊 *Техническая информация:*\n"
-        message += "• База данных: SQLite (WAL режим)\n"
-        message += "• Оптимизировано для 1000+ пользователей\n"
-        message += "• Автоматическое резервное копирование\n"
-        
-        keyboard = [
-            ["📊 Основная статистика", "🔄 Обновить"],
-            ["🏠 Главная"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        
-        await update.message.reply_text(
-            message,
-            reply_markup=reply_markup
-        )
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка получения статистики: {str(e)}")
-
 # ========== ОСНОВНЫЕ ФУНКЦИИ БОТА ==========
 
 # Флаг для отслеживания первого запуска
 first_start = True
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Меню специальностей - ОДНА КНОПКА В РЯДУ"""
+    """Меню специальностей - КОМПАКТНЫЕ КОЛОНКИ (2-3 кнопки в ряду)"""
+    # Создаем компактное меню (3 кнопки в ряду)
     keyboard = []
+    specialties_list = list(IT_SPECIALTIES.keys())
     
-    for specialty in IT_SPECIALTIES.keys():
-        keyboard.append([specialty])  # Каждая на отдельной строке
+    # Разбиваем на ряды по 3 кнопки
+    for i in range(0, len(specialties_list), 3):
+        row = specialties_list[i:i+3]
+        keyboard.append(row)
     
-    keyboard.append(["🔙 Назад", "📋 О проекте"])
+    # Добавляем навигационные кнопки
+    keyboard.append(["🧪 Пройти тест", "📋 О проекте"])
     keyboard.append(["🏠 Главная"])
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     await update.message.reply_text(
         "🎯 *ВЫБЕРИТЕ IT-СПЕЦИАЛЬНОСТЬ:*\n\n"
-        f"Всего: *{len(IT_SPECIALTIES)} технических направлений*\n\n"
+        f"Всего: *{len(IT_SPECIALTIES)} технических направлений*\n"
+        "📍 *Кликните на специальность, чтобы узнать подробности*\n\n"
         "🎯 *УЖЕ ДОСТУПНЫ ДЛЯ ИЗУЧЕНИЯ:*\n"
         "• 🧠 AI/ML-Инженер\n"
         "• 🌐 Веб-Разработчик\n"
         "• 🤖 Data-Science\n"
         "• 🔒 Кибербезопасность\n\n"
-        "*Остальные специальности добавляются постепенно...*\n\n"
-        "👇 *Выберите специальность:*",
+        "*Остальные специальности добавляются постепенно...*",
         reply_markup=reply_markup
     )
 
 async def show_about_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Информация о проекте"""
     keyboard = [
-        ["🔙 Назад к выбору", "🏠 Главная"],
-        ["🎯 Все специальности"]
+        ["🎯 Все специальности", "🧪 Пройти тест"],
+        ["🏠 Главная"]
     ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    # Отправляем текст о проекте
     await update.message.reply_text(
         ABOUT_PROJECT,
         reply_markup=reply_markup
@@ -1006,6 +1257,12 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎯 НАША ГЛАВНАЯ ЦЕЛЬ:
 Помочь каждому человеку найти свою идеальную IT-специальность, 
 основанную на навыках, интересах и рыночном спросе!
+
+🧪 *НОВАЯ ФУНКЦИЯ: ТЕСТ НА ПРОФОРИЕНТАЦИЮ*
+• 12 вопросов по 4 модулям
+• Анализ ваших предпочтений и навыков
+• Персональные рекомендации
+• Сохранение результатов
 
 ⚠️ БОТ НАХОДИТСЯ НА СТАДИИ РАЗРАБОТКИ!
 
@@ -1045,7 +1302,7 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         increment_specialty_view(text)
         
         keyboard = [
-            ["🔙 Назад к выбору", "🎯 Другая специальность"],
+            ["🎯 Все специальности", "🧪 Пройти тест"],
             ["📋 О проекте", "🏠 Главная"]
         ]
         
@@ -1067,8 +1324,8 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in IT_SPECIALTIES:
         # Если специальность есть в списке, но нет детальной информации
         keyboard = [
-            ["🔙 Назад к выбору", "🏠 Главная"],
-            ["📋 О проекте"]
+            ["🎯 Все специальности", "🧪 Пройти тест"],
+            ["📋 О проекте", "🏠 Главная"]
         ]
         
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -1084,236 +1341,300 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главное меню с новым оформлением"""
-    global first_start
+# ========== ФУНКЦИИ ТЕСТА ==========
+
+async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начать тест"""
+    user_id = update.effective_user.id
     
-    # Добавляем пользователя в базу данных
-    user = update.effective_user
-    user_data = {
-        'id': user.id,
-        'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name
-    }
-    add_or_update_user(user_data)
+    # Проверяем, есть ли незавершенный тест
+    progress = get_test_progress(user_id)
+    if progress:
+        keyboard = [
+            ["Продолжить тест", "Начать заново"],
+            ["🏠 Главная"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "📝 У вас есть незавершенный тест.\nХотите продолжить или начать заново?",
+            reply_markup=reply_markup
+        )
+        return
     
+    # Начинаем новый тест
     keyboard = [
-        ["🎯 Выбрать специальность", "📋 О проекте"],
-        ["🔄 Обновить", "📞 Помощь"]
+        ["🔵 Начать тест"],
+        ["🏠 Главная"]
     ]
-    
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    # Показываем приветственное сообщение только при первом запуске
-    if first_start:
-        # Отправляем новый краткий текст для первого запуска
-        await update.message.reply_text(FIRST_START_MESSAGE)
-        first_start = False
-    
-    # Всегда показываем основное сообщение с кнопками
     await update.message.reply_text(
-        "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
+        "🧠 *IT ВЫБОР: Тест для выбора IT-профессии*\n\n"
+        "## 📊 Структура теста:\n"
+        "Тест состоит из 4 модулей (12 вопросов, 10-15 минут)\n\n"
+        "## 🔵 МОДУЛЬ 1: Личные предпочтения (3 вопроса)\n"
+        "## 🟢 МОДУЛЬ 2: Навыки и способности (3 вопроса)\n"
+        "## 🟡 МОДУЛЬ 3: Практические предпочтения (3 вопроса)\n"
+        "## 🔴 МОДУЛЬ 4: Цели и ожидания (3 вопроса)\n\n"
+        "📝 *После теста вы получите:*\n"
+        "• Персональные рекомендации\n"
+        "• Подходящие IT-специальности\n"
+        "• Советы по обучению\n\n"
+        "⏱ *Время прохождения: 10-15 минут*",
         reply_markup=reply_markup
     )
 
-async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Переход на главную без показа приветственного сообщения"""
-    # Обновляем информацию о пользователе
-    user = update.effective_user
-    user_data = {
-        'id': user.id,
-        'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name
-    }
-    add_or_update_user(user_data)
-    
-    keyboard = [
-        ["🎯 Выбрать специальность", "📋 О проекте"],
-        ["🔄 Обновить", "📞 Помощь"]
-    ]
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    
-    # Просто показываем меню с кнопками
-    await update.message.reply_text(
-        "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
-        reply_markup=reply_markup
-    )
-
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик фотографий"""
-    await update.message.reply_text(
-        "😔 Увы, я пока что не умею обрабатывать фотографии!\n\n"
-        "Но я отлично справляюсь с текстом:\n"
-        "• Выбирайте IT-специальности 🎯\n"
-        "• Читайте подробную информацию 📚\n"
-        "• Изучайте планы обучения 🚀\n\n"
-        "👇 Используйте кнопки меню или напишите /start"
-    )
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Глобальный обработчик ошибок"""
-    print(f"❌ Ошибка: {context.error}")
-    
-    # Отправляем пользователю сообщение об ошибке
-    if update and update.effective_message:
-        try:
-            await update.effective_message.reply_text(
-                "😔 Произошла ошибка. Попробуйте позже или напишите @krylov19"
-            )
-        except:
-            pass
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик сообщений"""
+async def handle_test_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик начала теста"""
+    user_id = update.effective_user.id
     text = update.message.text
     
-    if text == "🎯 Выбрать специальность":
-        await show_menu(update, context)
+    if text == "Начать заново":
+        # Удаляем старый прогресс
+        delete_test_progress(user_id)
     
-    elif text == "📋 О проекте":
-        await show_about_project(update, context)
+    # Начинаем тест с первого модуля
+    save_test_progress(user_id, "module1", "q1", {})
     
-    elif text in IT_SPECIALTIES:
-        await show_info(update, context)
+    # Отправляем первый вопрос
+    await send_test_question(update, context, "module1", "q1")
+
+async def send_test_question(update: Update, context: ContextTypes.DEFAULT_TYPE, module, question):
+    """Отправить вопрос теста"""
+    question_data = TEST_QUESTIONS[module]["questions"][question]
     
-    elif text == "🔙 Назад":
-        await show_menu(update, context)
+    # Создаем инлайн-клавиатуру с вариантами ответов
+    keyboard = []
+    for key, text in question_data["options"].items():
+        keyboard.append([InlineKeyboardButton(text, callback_data=f"test_{module}_{question}_{key}")])
     
-    elif text == "🔙 Назад к выбору":
-        await show_menu(update, context)
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
-    elif text == "🏠 Главная":
-        await go_home(update, context)
+    # Отправляем вопрос
+    await update.message.reply_text(
+        f"🔹 *Модуль {module[-1]}: {TEST_QUESTIONS[module]['name']}*\n\n"
+        f"{question_data['text']}",
+        reply_markup=reply_markup
+    )
+
+async def handle_test_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик ответа на вопрос теста"""
+    query = update.callback_query
+    await query.answer()
     
-    elif text == "🎯 Все специальности":
-        await show_menu(update, context)
+    user_id = query.from_user.id
+    data = query.data.replace("test_", "").split("_")
     
-    elif text == "🎯 Другая специальность":
-        await show_menu(update, context)
+    if len(data) != 3:
+        return
     
-    elif text == "📞 Помощь":
-        await show_help(update, context)
+    module, question, answer = data
     
-    elif text == "🔄 Обновить":
-        await go_home(update, context)
+    # Получаем текущий прогресс
+    progress = get_test_progress(user_id)
+    if not progress:
+        return
     
-    elif text == "📊 Основная статистика":
-        await show_stats(update, context)
+    # Сохраняем ответ
+    answers = progress['answers']
+    answers[f"{module}_{question}"] = answer
     
-    elif text == "📈 Детальная статистика":
-        await show_detailed_stats(update, context)
+    # Определяем следующий вопрос
+    next_question = get_next_question(module, question)
     
-    elif text == "/stats":
-        await show_stats(update, context)
-    
-    elif text == "/detailed_stats":
-        await show_detailed_stats(update, context)
-    
+    if next_question:
+        # Сохраняем прогресс и отправляем следующий вопрос
+        save_test_progress(user_id, module, next_question, answers)
+        await send_test_question_from_query(query, context, module, next_question)
     else:
-        await go_home(update, context)
+        # Переходим к следующему модулю
+        next_module = get_next_module(module)
+        if next_module:
+            # Начинаем новый модуль с первого вопроса
+            first_question = list(TEST_QUESTIONS[next_module]["questions"].keys())[0]
+            save_test_progress(user_id, next_module, first_question, answers)
+            await send_test_question_from_query(query, context, next_module, first_question)
+        else:
+            # Тест завершен
+            await finish_test(query, context, answers)
 
-def main():
-    """Запуск бота с красивым оформлением"""
-    global first_start
-    first_start = True  # Сбрасываем флаг при запуске бота
+def get_next_question(module, current_question):
+    """Получить следующий вопрос в модуле"""
+    questions = list(TEST_QUESTIONS[module]["questions"].keys())
+    current_index = questions.index(current_question)
     
-    # Инициализируем базу данных
-    init_database()
-    
-    # Запускаем HTTP сервер для Render в отдельном потоке
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
-    
-    app = Application.builder().token(TOKEN).build()
-    
-    # Добавляем глобальный обработчик ошибок
-    app.add_error_handler(error_handler)
-    
-    # Добавляем обработчики команд
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", show_help))
-    app.add_handler(CommandHandler("about", show_about_project))
-    app.add_handler(CommandHandler("refresh", show_menu))
-    app.add_handler(CommandHandler("stats", show_stats))
-    app.add_handler(CommandHandler("detailed_stats", show_detailed_stats))
-    
-    # Добавляем обработчик фотографий
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    
-    # Обработчик текстовых сообщений (должен быть последним!)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # Красивое оформление при запуске (в консоли)
-    print("╔══════════════════════════════════════════════════════════╗")
-    print("║                                                          ║")
-    print("║                 🤖 IT ВЫБОР 2026 🤖                      ║")
-    print("║                                                          ║")
-    print("╠══════════════════════════════════════════════════════════╣")
-    print("║                                                          ║")
-    print(f"║  📊 Специальностей: {len(IT_SPECIALTIES)} (ТОЛЬКО технические)           ║")
-    print("║                                                          ║")
-    print("║  🎯 ПОЛНЫЙ разбор каждой специальности:                  ║")
-    print("║     • Плюсы/минусы профессии                             ║")
-    print("║     • Зарплаты 2026                                      ║")
-    print("║     • Пошаговый план обучения                            ║")
-    print("║     • Ресурсы (Habr, GitHub, курсы)                      ║")
-    print("║     • Технологии и проекты                               ║")
-    print("║     • Карьерный рост                                     ║")
-    print("║                                                          ║")
-    print("║  ⚠️  БОТ НАХОДИТСЯ НА СТАДИИ РАЗРАБОТКИ                  ║")
-    print("║                                                          ║")
-    print("║  💡 Мы будем постепенно:                                 ║")
-    print("║     1. Заполнять все специальности                       ║")
-    print("║     2. Улучшать информацию по запросам                   ║")
-    print("║     3. Добавлять тесты на профориентацию                 ║")
-    print("║     4. Создавать индивидуальные планы обучения           ║")
-    print("║                                                          ║")
-    print("║  🎯 ЦЕЛЬ: Помочь людям определиться с IT-специальностью  ║")
-    print("║                                                          ║")
-    print("║  👨‍💻 Контакт для предложений: @krylov19                   ║")
-    print("║                                                          ║")
-    print("╚══════════════════════════════════════════════════════════╝")
-    print()
-    print("✅ УЖЕ ЗАПОЛНЕНЫ ПОЛНОСТЬЮ:")
-    print("   1. 🧠 AI/ML-Инженер")
-    print("   2. 🌐 Веб-Разработчик")
-    print("   3. 🤖 Data-Science")
-    print("   4. 🔒 Кибербезопасность")
-    print()
-    print("🚫 ОСТАЛЬНЫЕ СПЕЦИАЛЬНОСТИ ПОКА В РАЗРАБОТКЕ:")
-    print("   Для них отображается сообщение:")
-    print("   '📝 Полная информация находиться в разработке!'")
-    print()
-    print("📊 БАЗА ДАННЫХ ОПТИМИЗИРОВАНА ДЛЯ 1000+ ПОЛЬЗОВАТЕЛЕЙ:")
-    print("   • SQLite база: bot_users.db (WAL режим)")
-    print("   • Индексы для быстрого поиска")
-    print("   • Ежедневная статистика")
-    print("   • Подробная аналитика")
-    print("   • Не забудьте заменить ADMIN_ID на ваш Telegram ID!")
-    print()
-    print("🌐 HTTP СЕРВЕР ДЛЯ RENDER:")
-    print("   • Порт: 8080")
-    print("   • Health check: /healthz")
-    print("   • Отвечает на запросы Render")
-    print()
-    print("🔄 ОСНОВНЫЕ УЛУЧШЕНИЯ:")
-    print("   • Разделение длинных сообщений (>4000 символов)")
-    print("   • Убран parse_mode='Markdown' для избежания ошибок")
-    print("   • Добавлен глобальный обработчик ошибок")
-    print("   • Улучшена обработка специальных символов")
-    print()
-    print("=" * 60)
-    print("⚡ Бот запущен и готов к работе!")
-    print("=" * 60)
-    
-    try:
-        app.run_polling(drop_pending_updates=True)
-    except Exception as e:
-        print(f"❌ Ошибка запуска бота: {e}")
-        print("🔄 Попробуйте перезапустить бота...")
+    if current_index + 1 < len(questions):
+        return questions[current_index + 1]
+    return None
 
-if __name__ == "__main__":
-    main()
+def get_next_module(current_module):
+    """Получить следующий модуль"""
+    modules = list(TEST_QUESTIONS.keys())
+    current_index = modules.index(current_module)
+    
+    if current_index + 1 < len(modules):
+        return modules[current_index + 1]
+    return None
+
+async def send_test_question_from_query(query, context: ContextTypes.DEFAULT_TYPE, module, question):
+    """Отправить вопрос теста из callback query"""
+    question_data = TEST_QUESTIONS[module]["questions"][question]
+    
+    # Создаем инлайн-клавиатуру с вариантами ответов
+    keyboard = []
+    for key, text in question_data["options"].items():
+        keyboard.append([InlineKeyboardButton(text, callback_data=f"test_{module}_{question}_{key}")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Редактируем сообщение с новым вопросом
+    await query.edit_message_text(
+        f"🔹 *Модуль {module[-1]}: {TEST_QUESTIONS[module]['name']}*\n\n"
+        f"{question_data['text']}",
+        reply_markup=reply_markup
+    )
+
+async def finish_test(query, context: ContextTypes.DEFAULT_TYPE, answers):
+    """Завершить тест и показать результаты"""
+    user_id = query.from_user.id
+    
+    # Рассчитываем результаты
+    results = calculate_results(answers)
+    recommended = get_recommended_specialties(results)
+    
+    # Сохраняем результаты
+    test_time = 600  # Примерное время теста (10 минут)
+    save_test_result(user_id, results, recommended, test_time)
+    
+    # Удаляем прогресс
+    delete_test_progress(user_id)
+    
+    # Формируем сообщение с результатами
+    message = "🎉 *ТЕСТ ЗАВЕРШЕН!*\n\n"
+    message += "📊 *Ваши результаты:*\n\n"
+    
+    # Показываем баллы по категориям
+    for category, score in results.items():
+        stars = "⭐" * (score // 20)  # 1 звезда за каждые 20 баллов
+        message += f"• {category.capitalize()}: {score}/100 {stars}\n"
+    
+    message += "\n🎯 *Рекомендованные специальности:*\n\n"
+    
+    # Показываем топ-3 рекомендации
+    for i, (specialty, score) in enumerate(recommended[:3], 1):
+        match_score = min(100, score * 10)  # Преобразуем в проценты
+        message += f"{i}. *{specialty}* - {match_score}% совпадения\n"
+    
+    message += "\n📈 *Советы по развитию:*\n"
+    
+    # Добавляем советы на основе результатов
+    top_category = max(results.items(), key=lambda x: x[1])[0]
+    advice = get_advice_for_category(top_category)
+    message += advice
+    
+    message += "\n💡 *Что дальше?*\n"
+    message += "1. Изучите подробности по рекомендованным специальностям\n"
+    message += "2. Начните обучение по выбранному направлению\n"
+    message += "3. Создайте первый проект для портфолио\n"
+    message += "4. Пройдите тест снова через месяц для сравнения результатов\n\n"
+    message += "👇 *Выберите действие:*"
+    
+    keyboard = [
+        ["🎯 Изучить рекомендации", "🧪 Пройти тест заново"],
+        ["📋 О проекте", "🏠 Главная"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    # Редактируем последнее сообщение
+    await query.edit_message_text(message)
+    
+    # Отправляем новое сообщение с клавиатурой
+    await query.message.reply_text(
+        "Вы можете изучить рекомендованные специальности или пройти тест заново:",
+        reply_markup=reply_markup
+    )
+
+def calculate_results(answers):
+    """Рассчитать результаты теста"""
+    scores = {
+        "frontend": 0,
+        "backend": 0,
+        "data": 0,
+        "ai": 0,
+        "devops": 0,
+        "cyber": 0,
+        "mobile": 0,
+        "qa": 0,
+        "design": 0
+    }
+    
+    # Обрабатываем каждый ответ
+    for answer_key, answer_value in answers.items():
+        module, question = answer_key.split("_")
+        question_data = TEST_QUESTIONS[module]["questions"][question]
+        
+        # Добавляем веса к баллам
+        if answer_value in question_data["weights"]:
+            weights = question_data["weights"][answer_value]
+            for category, weight in weights.items():
+                if category == "all":
+                    # Распределяем вес по всем категориям
+                    for cat in scores.keys():
+                        scores[cat] += weight
+                elif category in scores:
+                    scores[category] += weight
+    
+    # Нормализуем баллы до 100
+    max_score = max(scores.values()) if scores.values() else 1
+    if max_score > 0:
+        for category in scores:
+            scores[category] = int((scores[category] / max_score) * 100)
+    
+    return scores
+
+def get_recommended_specialties(results):
+    """Получить рекомендованные специальности на основе результатов"""
+    recommendations = []
+    
+    # Для каждой категории добавляем соответствующие специальности
+    for category, score in results.items():
+        if category in SPECIALTY_CATEGORIES and score > 40:  # Порог 40%
+            for specialty in SPECIALTY_CATEGORIES[category]:
+                # Учитываем балл категории и уникальность специальности
+                if specialty not in [r[0] for r in recommendations]:
+                    recommendations.append((specialty, score))
+    
+    # Сортируем по убыванию баллов
+    recommendations.sort(key=lambda x: x[1], reverse=True)
+    
+    return recommendations
+
+def get_advice_for_category(category):
+    """Получить советы по развитию для категории"""
+    advice_dict = {
+        "frontend": "• Практикуйтесь в верстке HTML/CSS\n• Изучите JavaScript и современные фреймворки\n• Создайте несколько веб-приложений для портфолио",
+        "backend": "• Освойте один из серверных языков (Python, Java, Go)\n• Изучите базы данных и SQL\n• Постройте REST API для проекта",
+        "data": "• Углубитесь в математику и статистику\n• Освойте Python для анализа данных\n• Участвуйте в Kaggle competitions",
+        "ai": "• Пройдите курсы по машинному обучению\n• Изучите фреймворки PyTorch/TensorFlow\n• Решайте реальные задачи с помощью AI",
+        "devops": "• Освойте Linux и командную строку\n• Изучите Docker и Kubernetes\n• Практикуйтесь в настройке серверов",
+        "cyber": "• Изучите основы сетей и протоколы\n• Практикуйтесь на платформах типа HackTheBox\n• Освойте инструменты тестирования на проникновение",
+        "mobile": "• Выберите платформу (iOS/Android) или кроссплатформу\n• Изучите соответствующий язык/SDK\n• Создайте несколько мобильных приложений",
+        "qa": "• Изучите методологии тестирования\n• Освойте инструменты автоматизации\n• Практикуйтесь в написании тест-кейсов",
+        "design": "• Освойте Figma или Sketch\n• Изучите принципы UI/UX дизайна\n• Создайте дизайн-систему для проекта"
+    }
+    
+    return advice_dict.get(category, "• Постоянно практикуйтесь и создавайте проекты\n• Изучайте современные технологии\n• Участвуйте в open-source проектах")
+
+async def show_test_recommendations(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать рекомендованные специальности из последнего теста"""
+    user_id = update.effective_user.id
+    
+    # Получаем последний тест пользователя
+    history = get_user_test_history(user_id)
+    
+    if not history:
+        await update.message.reply_text(
+            "📝 У вас еще нет результатов теста.\n"
+            "Пройдите тест, чтобы получить персональные рекомендации!",
+            reply_markup=ReplyKeyboardMarkup([["🧪 Пройти тест", "
