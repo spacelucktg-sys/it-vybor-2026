@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import json
 import sys
-import os
+import time
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
@@ -16,37 +16,16 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 TOKEN = "8553151496:AAGl4IMJHA7b_xFJLcrNGKvZBIKEWMPLZuM"
 
-# ========== НАСТРОЙКА ЛОГИРОВАНИЯ ДЛЯ RENDER ==========
-
-# Создаем логгер с выводом в stdout (для Render)
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-# Создаем обработчик для вывода в консоль
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-# Формат логов
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+# Настройка логирования для Render
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),  # Для Render
+        logging.FileHandler('bot.log')      # Для локальной отладки
+    ]
 )
-console_handler.setFormatter(formatter)
-
-# Удаляем старые обработчики и добавляем новый
-logger.handlers = []
-logger.addHandler(console_handler)
-
-# Также логируем в файл для отладки
-file_handler = logging.FileHandler('bot_debug.log')
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
-# Логируем запуск бота
-logger.info("=" * 60)
-logger.info("🚀 БОТ ЗАПУЩАЕТСЯ...")
-logger.info("=" * 60)
+logger = logging.getLogger(__name__)
 
 # ========== HTTP СЕРВЕР ДЛЯ RENDER ==========
 
@@ -58,24 +37,22 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
             self.wfile.write(b'Bot is running on Render')
-            logger.info(f"✅ Health check успешен от {self.address_string()}")
+            logger.info(f"✅ Health check от {self.address_string()}")
         else:
             self.send_response(404)
             self.end_headers()
     
     def log_message(self, format, *args):
-        logger.info(f"🌐 HTTP: {format % args}")
+        logger.debug(f"HTTP: {format % args}")
 
 def start_health_server():
     """Запуск HTTP сервера для Render"""
     try:
         server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
         logger.info("✅ HTTP сервер запущен на порту 8080")
-        logger.info("✅ Бот готов принимать запросы от Render")
         server.serve_forever()
     except Exception as e:
         logger.error(f"❌ Ошибка запуска HTTP сервера: {e}")
-        raise
 
 # ========== ОСНОВНОЙ КОД БОТА ==========
 
@@ -199,7 +176,7 @@ SPECIALTY_DETAILS = {
 • https://github.com/microsoft/ML-For-Beginners - ML для начинающих
 • https://github.com/huggingface/transformers - Библиотека трансформеров
 
-🎓 КУРСЫ (ОЧЕРЕДЬ ДЛЯ ОБУЧЕНИЯ):
+🎓 КУРСы (ОЧЕРЕДЬ ДЛЯ ОБУЧЕНИЯ):
 1. Coursera: "Machine Learning" от Andrew Ng (Стэнфорд)
 2. fast.ai: "Practical Deep Learning for Coders"
 3. DeepLearning.ai: "Deep Learning Specialization"
@@ -545,6 +522,272 @@ ABOUT_PROJECT = """
 
 🚀 Остальные специальности добавляются постепенно."""
 
+# ========== ТЕСТ ДЛЯ ВЫБОРА IT-ПРОФЕССИИ ==========
+
+TEST_QUESTIONS = {
+    "module1": {
+        "name": "Личные предпочтения",
+        "questions": [
+            {
+                "id": "q1",
+                "text": "🎯 Как бы вы предпочли работать?",
+                "options": {
+                    "1": "🎨 В одиночку, сосредоточенно над одной задачей",
+                    "2": "👥 В команде, общаясь и обсуждая идеи", 
+                    "3": "📊 Анализируя данные и выявляя закономерности",
+                    "4": "🔧 Решая конкретные технические проблемы",
+                    "5": "🎭 В динамичной среде с частыми изменениями"
+                }
+            },
+            {
+                "id": "q2", 
+                "text": "🎯 Что вам интереснее?",
+                "options": {
+                    "1": "Создавать что-то видимое и красивое",
+                    "2": "Продумывать логику и архитектуру систем",
+                    "3": "Находить скрытые взаимосвязи в информации",
+                    "4": "Оптимизировать и улучшать существующие системы",
+                    "5": "Помогать людям решать технические проблемы"
+                }
+            },
+            {
+                "id": "q3",
+                "text": "🎯 Какой подход вам ближе?",
+                "options": {
+                    "1": "🎨 Креативный, дизайнерский",
+                    "2": "⚙️ Системный, логический",
+                    "3": "🔍 Аналитический, исследовательский",
+                    "4": "🛠 Практический, прикладной",
+                    "5": "💬 Коммуникативный, объясняющий"
+                }
+            }
+        ]
+    },
+    "module2": {
+        "name": "Навыки и способности",
+        "questions": [
+            {
+                "id": "q4",
+                "text": "🎯 Ваше отношение к математике:",
+                "options": {
+                    "1": "😫 Стараюсь избегать",
+                    "2": "😐 Могу использовать основы",
+                    "3": "🤔 Нравится логика и алгоритмы",
+                    "4": "🧮 Уверенно работаю с числами",
+                    "5": "📈 Обожаю сложные вычисления и статистику"
+                }
+            },
+            {
+                "id": "q5",
+                "text": "🎯 Как вы воспринимаете визуальную информацию?",
+                "options": {
+                    "1": "👁 Замечаю мелкие детали и несоответствия",
+                    "2": "🎨 Вижу общую гармонию и цветовые сочетания",
+                    "3": "📐 Мыслю в терминах структур и схем",
+                    "4": "📊 Легко читаю графики и диаграммы",
+                    "5": "🎯 Фокусируюсь на функциональности, а не на красоте"
+                }
+            },
+            {
+                "id": "q6",
+                "text": "🎯 Ваш уровень английского:",
+                "options": {
+                    "1": "❌ Базовый или отсутствует",
+                    "2": "📚 Читаю со словарем",
+                    "3": "📖 Свободно читаю документацию",
+                    "4": "💬 Могу общаться на технические темы",
+                    "5": "🗣 Свободно говорю и пишу"
+                }
+            }
+        ]
+    },
+    "module3": {
+        "name": "Практические предпочтения",
+        "questions": [
+            {
+                "id": "q7",
+                "text": "🎯 Какой процесс вам интереснее?",
+                "options": {
+                    "1": "Проектировать интерфейсы → тестировать → улучшать",
+                    "2": "Писать код → тестировать → исправлять ошибки",
+                    "3": "Собирать данные → анализировать → делать выводы",
+                    "4": "Мониторить системы → находить проблемы → оптимизировать",
+                    "5": "Общаться с пользователями → понимать проблемы → предлагать решения"
+                }
+            },
+            {
+                "id": "q8",
+                "text": "🎯 Какие проекты привлекают?",
+                "options": {
+                    "1": "Веб-сайты и мобильные приложения",
+                    "2": "Сервисы и платформы",
+                    "3": "Системы аналитики и прогнозирования",
+                    "4": "Инфраструктура и сети",
+                    "5": "Документация и обучение"
+                }
+            },
+            {
+                "id": "q9",
+                "text": "🎯 Сколько времени готовы уделять обучению:",
+                "options": {
+                    "1": "2-4 часа в неделю",
+                    "2": "5-10 часов в неделю",
+                    "3": "10-20 часов в неделю",
+                    "4": "20-30 часов в неделю",
+                    "5": "Готов погрузиться полностью (30+ часов)"
+                }
+            }
+        ]
+    },
+    "module4": {
+        "name": "Цели и ожидания",
+        "questions": [
+            {
+                "id": "q10",
+                "text": "🎯 Когда хотите начать работать?",
+                "options": {
+                    "1": "📅 Через 3-6 месяцев",
+                    "2": "📅 Через 6-12 месяцев",
+                    "3": "📅 Через 1-2 года",
+                    "4": "📅 Не ограничен по времени, хочу основательно изучить",
+                    "5": "💼 Уже ищу возможности для стажировки"
+                }
+            },
+            {
+                "id": "q11",
+                "text": "🎯 Какие зарплатные ожидания через 1-2 года?",
+                "options": {
+                    "1": "₽ 50-80 тыс. (начальный уровень)",
+                    "2": "₽ 80-120 тыс. (джун)",
+                    "3": "₽ 120-200 тыс. (мидл)",
+                    "4": "₽ 200-350 тыс. (сеньор)",
+                    "5": "💎 350+ тыс. (эксперт/архитектор)"
+                }
+            },
+            {
+                "id": "q12",
+                "text": "🎯 Что важно в карьере?",
+                "options": {
+                    "1": "⚡️ Быстрый старт и первые деньги",
+                    "2": "📈 Постепенный рост и стабильность",
+                    "3": "🎯 Глубокий экспертиз в конкретной области",
+                    "4": "👨‍💼 Управление командой/проектами",
+                    "5": "🚀 Создание своего продукта/стартапа"
+                }
+            }
+        ]
+    }
+}
+
+# Веса ответов для расчета результатов
+ANSWER_WEIGHTS = {
+    # Модуль 1
+    "q1": {
+        "1": {"frontend": 2, "backend": 1, "qa": 3},
+        "2": {"frontend": 3, "backend": 2, "devops": 1},
+        "3": {"data": 3, "ai": 2, "backend": 1},
+        "4": {"backend": 3, "devops": 2, "cyber": 2},
+        "5": {"frontend": 2, "devops": 3, "qa": 1}
+    },
+    "q2": {
+        "1": {"frontend": 3, "design": 3},
+        "2": {"backend": 3, "fullstack": 2},
+        "3": {"data": 3, "ai": 2},
+        "4": {"devops": 3, "backend": 2},
+        "5": {"qa": 3, "support": 2}
+    },
+    "q3": {
+        "1": {"frontend": 3, "design": 3},
+        "2": {"backend": 3, "devops": 2},
+        "3": {"data": 3, "ai": 2},
+        "4": {"mobile": 2, "embedded": 3},
+        "5": {"qa": 2, "management": 3}
+    },
+    # Модуль 2
+    "q4": {
+        "1": {"frontend": 1, "design": 1},
+        "2": {"frontend": 2, "mobile": 2},
+        "3": {"backend": 2, "devops": 2},
+        "4": {"data": 3, "backend": 2},
+        "5": {"ai": 3, "data": 3}
+    },
+    "q5": {
+        "1": {"qa": 3, "frontend": 2},
+        "2": {"design": 3, "frontend": 2},
+        "3": {"backend": 3, "devops": 2},
+        "4": {"data": 3, "ai": 2},
+        "5": {"backend": 2, "devops": 3}
+    },
+    "q6": {
+        "1": {"all": 1},
+        "2": {"all": 2},
+        "3": {"all": 3},
+        "4": {"all": 4},
+        "5": {"all": 5}
+    },
+    # Модуль 3
+    "q7": {
+        "1": {"frontend": 3, "design": 2},
+        "2": {"backend": 3, "mobile": 2},
+        "3": {"data": 3, "ai": 2},
+        "4": {"devops": 3, "sre": 2},
+        "5": {"qa": 3, "support": 2}
+    },
+    "q8": {
+        "1": {"frontend": 3, "mobile": 3},
+        "2": {"backend": 3, "fullstack": 2},
+        "3": {"data": 3, "ai": 2},
+        "4": {"devops": 3, "cyber": 2},
+        "5": {"qa": 2, "support": 3}
+    },
+    "q9": {
+        "1": {"all": 1},
+        "2": {"all": 2},
+        "3": {"all": 3},
+        "4": {"all": 4},
+        "5": {"all": 5}
+    },
+    # Модуль 4
+    "q10": {
+        "1": {"frontend": 3, "mobile": 2},
+        "2": {"all": 2},
+        "3": {"data": 2, "ai": 3},
+        "4": {"all": 1},
+        "5": {"all": 3}
+    },
+    "q11": {
+        "1": {"all": 1},
+        "2": {"all": 2},
+        "3": {"all": 3},
+        "4": {"ai": 3, "data": 3, "devops": 3},
+        "5": {"ai": 5, "cyber": 4, "sre": 4}
+    },
+    "q12": {
+        "1": {"frontend": 3, "mobile": 2},
+        "2": {"backend": 2, "qa": 3},
+        "3": {"ai": 3, "data": 3, "cyber": 3},
+        "4": {"all": 2},
+        "5": {"all": 1}
+    }
+}
+
+# Маппинг специальностей по категориям
+SPECIALTY_CATEGORIES = {
+    "frontend": ["🎨 Frontend-Разработчик", "🌐 Веб-Разработчик", "⚛️ React", "📱 React-Native", "📱 Flutter"],
+    "backend": ["💻 Backend-Разработчик", "🐍 Python-Разработчик", "☕ Java-Разработчик", "🚀 Node.js", "🦀 Rust-Разработчик", "🔄 Go-Разработчик"],
+    "data": ["📊 Data-Аналитик", "🤖 Data-Science", "🗄️ Админ-БД"],
+    "ai": ["🧠 AI/ML-Инженер", "👁️ Computer-Vision", "💬 NLP-Инженер"],
+    "devops": ["⚙️ DevOps-Инженер", "☁️ Cloud-Инженер", "⚡ SRE-Инженер", "📡 Сетевой-Инженер"],
+    "cyber": ["🔒 Кибербезопасность", "🔐 Pentester"],
+    "mobile": ["📱 Мобильный-Разработчик", "📱 Flutter", "📱 React-Native"],
+    "qa": ["🧪 QA-Инженер"],
+    "design": ["🎨 UI/UX-Дизайнер"],
+    "fullstack": ["👨‍💻 Fullstack"],
+    "gamedev": ["🎮 GameDev"],
+    "embedded": ["🔧 Embedded"],
+    "blockchain": ["🤖 Blockchain"]
+}
+
 # ========== УЛУЧШЕННАЯ БАЗА ДАННЫХ ==========
 
 def init_database():
@@ -597,6 +840,30 @@ def init_database():
             new_users INTEGER DEFAULT 0,
             active_users INTEGER DEFAULT 0,
             total_views INTEGER DEFAULT 0
+        )
+        ''')
+        
+        # Таблица для результатов тестов
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS test_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            test_date TIMESTAMP,
+            results TEXT,
+            recommended_specialties TEXT,
+            test_time_seconds INTEGER
+        )
+        ''')
+        
+        # Таблица для прогресса тестов
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS test_progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE,
+            current_module TEXT,
+            current_question TEXT,
+            answers TEXT,
+            start_time TIMESTAMP
         )
         ''')
         
@@ -699,13 +966,131 @@ def increment_specialty_view(specialty_name):
     finally:
         conn.close()
 
+def save_test_progress(user_id, module, question, answers):
+    """Сохранение прогресса теста"""
+    try:
+        conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        answers_json = json.dumps(answers, ensure_ascii=False)
+        
+        cursor.execute('''
+        INSERT OR REPLACE INTO test_progress 
+        (user_id, current_module, current_question, answers, start_time)
+        VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, module, question, answers_json, now))
+        
+        conn.commit()
+        logger.info(f"📝 Прогресс теста сохранен для пользователя {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения прогресса теста: {e}")
+    finally:
+        conn.close()
+
+def get_test_progress(user_id):
+    """Получение прогресса теста"""
+    try:
+        conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM test_progress WHERE user_id = ?', (user_id,))
+        result = cursor.fetchone()
+        
+        if result:
+            return {
+                'id': result[0],
+                'user_id': result[1],
+                'current_module': result[2],
+                'current_question': result[3],
+                'answers': json.loads(result[4]) if result[4] else {},
+                'start_time': result[5]
+            }
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения прогресса теста: {e}")
+        return None
+    finally:
+        conn.close()
+
+def delete_test_progress(user_id):
+    """Удаление прогресса теста"""
+    try:
+        conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM test_progress WHERE user_id = ?', (user_id,))
+        conn.commit()
+        logger.info(f"🗑️ Прогресс теста удален для пользователя {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка удаления прогресса теста: {e}")
+    finally:
+        conn.close()
+
+def save_test_result(user_id, results, recommended_specialties, test_time):
+    """Сохранение результатов теста"""
+    try:
+        conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        results_json = json.dumps(results, ensure_ascii=False)
+        specialties_json = json.dumps(recommended_specialties, ensure_ascii=False)
+        
+        cursor.execute('''
+        INSERT INTO test_results 
+        (user_id, test_date, results, recommended_specialties, test_time_seconds)
+        VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, now, results_json, specialties_json, test_time))
+        
+        conn.commit()
+        logger.info(f"💾 Результаты теста сохранены для пользователя {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения результатов теста: {e}")
+    finally:
+        conn.close()
+
 # ========== ОСНОВНЫЕ ФУНКЦИИ БОТА ==========
 
-# Флаг для отслеживания первого запуска
-first_start = True
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Главное меню"""
+    try:
+        # Добавляем пользователя в базу данных
+        user = update.effective_user
+        user_data = {
+            'id': user.id,
+            'username': user.username,
+            'first_name': user.first_name,
+            'last_name': user.last_name
+        }
+        add_or_update_user(user_data)
+        
+        keyboard = [
+            ["🎯 Выбрать специальность", "🧪 Пройти тест"],
+            ["📋 О проекте", "📞 Помощь"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "🤖 *IT ВЫБОР 2026*\n\n"
+            "Добро пожаловать! Я помогу вам выбрать IT-специальность, "
+            "которая подходит именно вам.\n\n"
+            "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
+            reply_markup=reply_markup
+        )
+        logger.info(f"🚀 Старт для пользователя {user.id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в start: {e}")
+        await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Меню специальностей - КОМПАКТНЫЕ КОЛОНКИ (2-3 кнопки в ряду)"""
+    """Меню специальностей - компактное отображение"""
     try:
         # Создаем компактное меню (3 кнопки в ряду)
         keyboard = []
@@ -811,7 +1196,7 @@ def split_message(text, max_length=4000):
     return parts
 
 async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать ПОЛНУЮ информацию о специальности"""
+    """Показать информацию о специальности"""
     try:
         text = update.message.text
         
@@ -834,7 +1219,7 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text(info_text, reply_markup=reply_markup)
             
-            logger.info(f"📚 Информация показана: {text} для пользователя {update.effective_user.id}")
+            logger.info(f"📚 Информация показана: {text}")
         
         elif text in IT_SPECIALTIES:
             keyboard = [
@@ -848,61 +1233,15 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             increment_specialty_view(text)
             
             await update.message.reply_text(info_text, reply_markup=reply_markup)
-            logger.info(f"📝 Специальность в разработке: {text} для пользователя {update.effective_user.id}")
+            logger.info(f"📝 Специальность в разработке: {text}")
             
     except Exception as e:
         logger.error(f"❌ Ошибка в show_info: {e}")
         await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главное меню с новым оформлением"""
-    try:
-        global first_start
-        
-        # Добавляем пользователя в базу данных
-        user = update.effective_user
-        user_data = {
-            'id': user.id,
-            'username': user.username,
-            'first_name': user.first_name,
-            'last_name': user.last_name
-        }
-        add_or_update_user(user_data)
-        
-        keyboard = [
-            ["🎯 Выбрать специальность", "🧪 Пройти тест"],
-            ["📋 О проекте", "📞 Помощь"]
-        ]
-        
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        
-        if first_start:
-            await update.message.reply_text(FIRST_START_MESSAGE)
-            first_start = False
-        
-        await update.message.reply_text(
-            "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
-            reply_markup=reply_markup
-        )
-        logger.info(f"🚀 Бот запущен для пользователя {user.id} (@{user.username})")
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в start: {e}")
-        await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
-
 async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Переход на главную без показа приветственного сообщения"""
+    """Переход на главную"""
     try:
-        # Обновляем информацию о пользователе
-        user = update.effective_user
-        user_data = {
-            'id': user.id,
-            'username': user.username,
-            'first_name': user.first_name,
-            'last_name': user.last_name
-        }
-        add_or_update_user(user_data)
-        
         keyboard = [
             ["🎯 Выбрать специальность", "🧪 Пройти тест"],
             ["📋 О проекте", "📞 Помощь"]
@@ -914,38 +1253,347 @@ async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
             reply_markup=reply_markup
         )
-        logger.info(f"🏠 Главная показана пользователю {user.id}")
+        logger.info(f"🏠 Главная показана пользователю {update.effective_user.id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в go_home: {e}")
 
-async def handle_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопки теста"""
+# ========== ФУНКЦИИ ТЕСТА ==========
+
+async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начать тест"""
     try:
+        user_id = update.effective_user.id
+        
+        # Проверяем, есть ли незавершенный тест
+        progress = get_test_progress(user_id)
+        if progress:
+            keyboard = [
+                ["Продолжить тест", "Начать заново"],
+                ["🏠 Главная"]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            
+            await update.message.reply_text(
+                "📝 У вас есть незавершенный тест.\nХотите продолжить или начать заново?",
+                reply_markup=reply_markup
+            )
+            return
+        
+        # Начинаем новый тест
         keyboard = [
             ["🔵 Начать тест"],
-            ["🎯 Все специальности", "🏠 Главная"]
+            ["🏠 Главная"]
         ]
-        
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         
         await update.message.reply_text(
-            "🧪 *ТЕСТ ДЛЯ ВЫБОРА IT-ПРОФЕССИИ*\n\n"
+            "🧠 *IT ВЫБОР: Тест для выбора IT-профессии*\n\n"
             "📊 *Структура теста:*\n"
             "• 12 вопросов по 4 модулям\n"
-            "• Время прохождения: 10-15 минут\n"
+            "• Время: 10-15 минут\n"
             "• Персональные рекомендации\n\n"
+            "🔵 *Модуль 1:* Личные предпочтения\n"
+            "🟢 *Модуль 2:* Навыки и способности\n"
+            "🟡 *Модуль 3:* Практические предпочтения\n"
+            "🔴 *Модуль 4:* Цели и ожидания\n\n"
             "📝 *После теста вы получите:*\n"
             "• Подходящие IT-специальности\n"
             "• Советы по обучению\n"
             "• Рекомендации по развитию\n\n"
-            "👇 *Нажмите 'Начать тест', чтобы начать:*",
+            "⏱ *Время прохождения: 10-15 минут*",
             reply_markup=reply_markup
         )
-        logger.info(f"🧪 Тест показан пользователю {update.effective_user.id}")
+        logger.info(f"🧪 Тест показан пользователю {user_id}")
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в handle_test: {e}")
+        logger.error(f"❌ Ошибка в start_test: {e}")
+
+async def handle_test_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик начала теста"""
+    try:
+        user_id = update.effective_user.id
+        text = update.message.text
+        
+        if text == "Начать заново":
+            delete_test_progress(user_id)
+        
+        # Начинаем тест с первого модуля
+        save_test_progress(user_id, "module1", "q1", {})
+        
+        # Отправляем первый вопрос
+        await send_test_question(update, context, "module1", "q1")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в handle_test_start: {e}")
+
+async def send_test_question(update: Update, context: ContextTypes.DEFAULT_TYPE, module, question):
+    """Отправить вопрос теста"""
+    try:
+        # Получаем данные вопроса
+        module_data = TEST_QUESTIONS[module]
+        question_data = None
+        
+        for q in module_data["questions"]:
+            if q["id"] == question:
+                question_data = q
+                break
+        
+        if not question_data:
+            await update.message.reply_text("❌ Ошибка: вопрос не найден")
+            return
+        
+        # Создаем инлайн-клавиатуру
+        keyboard = []
+        for key, text in question_data["options"].items():
+            keyboard.append([InlineKeyboardButton(text, callback_data=f"test_{module}_{question}_{key}")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Отправляем вопрос
+        module_number = module[-1]  # module1 -> 1, module2 -> 2, etc
+        await update.message.reply_text(
+            f"🔹 *Модуль {module_number}: {module_data['name']}*\n\n"
+            f"{question_data['text']}",
+            reply_markup=reply_markup
+        )
+        logger.info(f"❓ Вопрос отправлен: {module}.{question}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в send_test_question: {e}")
+
+async def handle_test_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик ответа на вопрос теста"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        data = query.data.replace("test_", "").split("_")
+        
+        if len(data) != 3:
+            return
+        
+        module, question, answer = data
+        
+        # Получаем текущий прогресс
+        progress = get_test_progress(user_id)
+        if not progress:
+            await query.edit_message_text("❌ Сессия теста устарела. Начните заново.")
+            return
+        
+        # Сохраняем ответ
+        answers = progress['answers']
+        answers[f"{module}_{question}"] = answer
+        save_test_progress(user_id, module, question, answers)
+        
+        # Определяем следующий вопрос
+        module_data = TEST_QUESTIONS[module]["questions"]
+        current_index = next((i for i, q in enumerate(module_data) if q["id"] == question), -1)
+        
+        if current_index + 1 < len(module_data):
+            # Следующий вопрос в том же модуле
+            next_question = module_data[current_index + 1]["id"]
+            save_test_progress(user_id, module, next_question, answers)
+            await send_test_question_from_query(query, context, module, next_question)
+        else:
+            # Переходим к следующему модулю
+            modules = list(TEST_QUESTIONS.keys())
+            current_module_index = modules.index(module)
+            
+            if current_module_index + 1 < len(modules):
+                # Начинаем новый модуль
+                next_module = modules[current_module_index + 1]
+                first_question = TEST_QUESTIONS[next_module]["questions"][0]["id"]
+                save_test_progress(user_id, next_module, first_question, answers)
+                await send_test_question_from_query(query, context, next_module, first_question)
+            else:
+                # Тест завершен
+                await finish_test(query, context, answers)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в handle_test_answer: {e}")
+
+async def send_test_question_from_query(query, context: ContextTypes.DEFAULT_TYPE, module, question):
+    """Отправить вопрос теста из callback query"""
+    try:
+        # Получаем данные вопроса
+        module_data = TEST_QUESTIONS[module]
+        question_data = None
+        
+        for q in module_data["questions"]:
+            if q["id"] == question:
+                question_data = q
+                break
+        
+        if not question_data:
+            await query.edit_message_text("❌ Ошибка: вопрос не найден")
+            return
+        
+        # Создаем инлайн-клавиатуру
+        keyboard = []
+        for key, text in question_data["options"].items():
+            keyboard.append([InlineKeyboardButton(text, callback_data=f"test_{module}_{question}_{key}")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Редактируем сообщение
+        module_number = module[-1]
+        await query.edit_message_text(
+            f"🔹 *Модуль {module_number}: {module_data['name']}*\n\n"
+            f"{question_data['text']}",
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в send_test_question_from_query: {e}")
+
+def calculate_results(answers):
+    """Рассчитать результаты теста"""
+    scores = {
+        "frontend": 0, "backend": 0, "data": 0, "ai": 0,
+        "devops": 0, "cyber": 0, "mobile": 0, "qa": 0,
+        "design": 0, "fullstack": 0, "gamedev": 0,
+        "embedded": 0, "blockchain": 0
+    }
+    
+    # Обрабатываем каждый ответ
+    for answer_key, answer_value in answers.items():
+        question_id = answer_key.split("_")[1]  # module1_q1 -> q1
+        
+        if question_id in ANSWER_WEIGHTS and answer_value in ANSWER_WEIGHTS[question_id]:
+            weights = ANSWER_WEIGHTS[question_id][answer_value]
+            
+            for category, weight in weights.items():
+                if category == "all":
+                    # Распределяем по всем категориям
+                    for cat in scores:
+                        scores[cat] += weight
+                elif category in scores:
+                    scores[category] += weight
+    
+    # Нормализуем баллы до 100
+    max_score = max(scores.values()) if max(scores.values()) > 0 else 1
+    for category in scores:
+        scores[category] = int((scores[category] / max_score) * 100)
+    
+    return scores
+
+def get_recommended_specialties(results):
+    """Получить рекомендованные специальности"""
+    recommendations = []
+    
+    # Для каждой категории с баллом > 30 добавляем специальности
+    for category, score in results.items():
+        if score > 30 and category in SPECIALTY_CATEGORIES:
+            for specialty in SPECIALTY_CATEGORIES[category]:
+                if specialty not in [r[0] for r in recommendations]:
+                    recommendations.append((specialty, score))
+    
+    # Сортируем по убыванию баллов
+    recommendations.sort(key=lambda x: x[1], reverse=True)
+    
+    return recommendations[:5]  # Возвращаем топ-5
+
+def get_advice_for_category(category):
+    """Получить советы по развитию"""
+    advice = {
+        "frontend": "• Практикуйтесь в верстке HTML/CSS\n• Изучите JavaScript и современные фреймворки\n• Создайте несколько веб-приложений для портфолио",
+        "backend": "• Освойте один из серверных языков (Python, Java, Go)\n• Изучите базы данных и SQL\n• Постройте REST API для проекта",
+        "data": "• Углубитесь в математику и статистику\n• Освойте Python для анализа данных\n• Участвуйте в Kaggle competitions",
+        "ai": "• Пройдите курсы по машинному обучению\n• Изучите фреймворки PyTorch/TensorFlow\n• Решайте реальные задачи с помощью AI",
+        "devops": "• Освойте Linux и командную строку\n• Изучите Docker и Kubernetes\n• Практикуйтесь в настройке серверов",
+        "cyber": "• Изучите основы сетей и протоколы\n• Практикуйтесь на платформах типа HackTheBox\n• Освойте инструменты тестирования на проникновение",
+        "mobile": "• Выберите платформу (iOS/Android) или кроссплатформу\n• Изучите соответствующий язык/SDK\n• Создайте несколько мобильных приложений",
+        "qa": "• Изучите методологии тестирования\n• Освойте инструменты автоматизации\n• Практикуйтесь в написании тест-кейсов",
+        "design": "• Освойте Figma или Sketch\n• Изучите принципы UI/UX дизайна\n• Создайте дизайн-систему для проекта"
+    }
+    
+    return advice.get(category, "• Постоянно практикуйтесь\n• Изучайте современные технологии\n• Создавайте проекты для портфолио")
+
+async def finish_test(query, context: ContextTypes.DEFAULT_TYPE, answers):
+    """Завершить тест и показать результаты"""
+    try:
+        user_id = query.from_user.id
+        
+        # Рассчитываем результаты
+        results = calculate_results(answers)
+        recommended = get_recommended_specialties(results)
+        
+        # Сохраняем результаты
+        test_time = int(time.time() - datetime.strptime(
+            get_test_progress(user_id)['start_time'], 
+            '%Y-%m-%d %H:%M:%S'
+        ).timestamp()) if get_test_progress(user_id) else 600
+        
+        save_test_result(user_id, results, recommended, test_time)
+        
+        # Удаляем прогресс
+        delete_test_progress(user_id)
+        
+        # Формируем сообщение с результатами
+        message = "🎉 *ТЕСТ ЗАВЕРШЕН!*\n\n"
+        message += "📊 *Ваши результаты:*\n\n"
+        
+        # Топ-3 категории
+        top_categories = sorted(results.items(), key=lambda x: x[1], reverse=True)[:3]
+        for category, score in top_categories:
+            stars = "⭐" * (score // 20)
+            message += f"• {category.capitalize()}: {score}/100 {stars}\n"
+        
+        message += "\n🎯 *Рекомендованные специальности:*\n\n"
+        
+        # Рекомендации
+        for i, (specialty, score) in enumerate(recommended, 1):
+            match_score = min(100, score)
+            message += f"{i}. *{specialty}* - {match_score}% совпадения\n"
+        
+        message += "\n📈 *Советы по развитию:*\n"
+        
+        # Советы для топ-категории
+        if top_categories:
+            top_category = top_categories[0][0]
+            message += get_advice_for_category(top_category)
+        
+        message += "\n💡 *Что дальше?*\n"
+        message += "1. Изучите подробности по рекомендованным специальностям\n"
+        message += "2. Начните обучение по выбранному направлению\n"
+        message += "3. Создайте первый проект для портфолио\n"
+        message += "4. Пройдите тест снова через месяц\n\n"
+        message += "👇 *Выберите действие:*"
+        
+        keyboard = [
+            ["🎯 Изучить рекомендации", "🧪 Пройти тест заново"],
+            ["📋 О проекте", "🏠 Главная"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        # Редактируем последнее сообщение
+        await query.edit_message_text(message)
+        
+        # Отправляем новое сообщение с клавиатурой
+        await query.message.reply_text(
+            "Вы можете изучить рекомендованные специальности или пройти тест заново:",
+            reply_markup=reply_markup
+        )
+        
+        logger.info(f"✅ Тест завершен для пользователя {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в finish_test: {e}")
+        await query.edit_message_text("❌ Произошла ошибка при обработке результатов теста.")
+
+async def show_test_recommendations(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать рекомендованные специальности"""
+    try:
+        await update.message.reply_text(
+            "🎯 Чтобы получить персональные рекомендации, пройдите тест!\n\n"
+            "👇 Нажмите на кнопку ниже:",
+            reply_markup=ReplyKeyboardMarkup([["🧪 Пройти тест", "🏠 Главная"]], resize_keyboard=True)
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в show_test_recommendations: {e}")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик сообщений"""
@@ -960,17 +1608,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == "🎯 Все специальности":
             await show_menu(update, context)
         
+        elif text == "🎯 Изучить рекомендации":
+            await show_test_recommendations(update, context)
+        
         elif text == "🧪 Пройти тест":
-            await handle_test(update, context)
+            await start_test(update, context)
         
         elif text == "🔵 Начать тест":
-            await update.message.reply_text(
-                "⏳ *Тест находится в разработке*\n\n"
-                "Скоро появится возможность пройти тест "
-                "и получить персональные рекомендации!\n\n"
-                "А пока вы можете изучить доступные специальности.",
-                reply_markup=ReplyKeyboardMarkup([["🎯 Все специальности", "🏠 Главная"]], resize_keyboard=True)
-            )
+            await handle_test_start(update, context)
+        
+        elif text == "Продолжить тест":
+            progress = get_test_progress(update.effective_user.id)
+            if progress:
+                await send_test_question(update, context, 
+                                       progress['current_module'], 
+                                       progress['current_question'])
+            else:
+                await start_test(update, context)
+        
+        elif text == "Начать заново":
+            delete_test_progress(update.effective_user.id)
+            await handle_test_start(update, context)
+        
+        elif text == "🧪 Пройти тест заново":
+            delete_test_progress(update.effective_user.id)
+            await start_test(update, context)
         
         elif text == "📋 О проекте":
             await show_about_project(update, context)
@@ -989,6 +1651,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     except Exception as e:
         logger.error(f"❌ Ошибка в handle_message: {e}")
+        await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Глобальный обработчик ошибок"""
@@ -1012,7 +1675,7 @@ def main():
         # Запускаем HTTP сервер для Render в отдельном потоке
         health_thread = threading.Thread(target=start_health_server, daemon=True)
         health_thread.start()
-        logger.info("✅ HTTP сервер запущен в отдельном потоке")
+        logger.info("✅ HTTP сервер запущен")
         
         # Создаем приложение
         app = Application.builder().token(TOKEN).build()
@@ -1026,14 +1689,17 @@ def main():
         app.add_handler(CommandHandler("about", show_about_project))
         app.add_handler(CommandHandler("menu", show_menu))
         
+        # Добавляем обработчик callback query (для теста)
+        app.add_handler(CallbackQueryHandler(handle_test_answer, pattern="^test_"))
+        
         # Обработчик текстовых сообщений
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
         # Запускаем бота
-        logger.info("✅ Бот запускается...")
         logger.info("=" * 60)
         logger.info("🤖 IT ВЫБОР 2026 - БОТ ЗАПУЩЕН")
         logger.info(f"📊 Специальностей: {len(IT_SPECIALTIES)}")
+        logger.info("🧪 Тест на профориентацию: ДОСТУПЕН")
         logger.info("🎯 Готов к работе!")
         logger.info("=" * 60)
         
