@@ -399,7 +399,7 @@ GitHub: https://github.com/ageron/handson-ml2
 
 ---
 
-🚀 ПЛАН ОБУЧЕНИЯ (10-12 месяцев):
+🚀 ПЛАН ОБУЧЕНИя (10-12 месяцев):
 1. Основы сетей + Linux (2 месяца)
 2. Программирование (Python) (2 месяца)
 3. Web уязвимости (3 месяца)
@@ -886,8 +886,7 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         message,
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        reply_markup=reply_markup
     )
 
 async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -942,8 +941,7 @@ async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         await update.message.reply_text(
             message,
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            reply_markup=reply_markup
         )
         
     except Exception as e:
@@ -976,8 +974,7 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 🔒 Кибербезопасность\n\n"
         "*Остальные специальности добавляются постепенно...*\n\n"
         "👇 *Выберите специальность:*",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        reply_markup=reply_markup
     )
 
 async def show_about_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1017,6 +1014,25 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(help_text, reply_markup=reply_markup)
 
+def split_message(text, max_length=4000):
+    """Разделить длинное сообщение на части"""
+    if len(text) <= max_length:
+        return [text]
+    
+    parts = []
+    while len(text) > max_length:
+        # Находим последний перенос строки в пределах max_length
+        split_point = text[:max_length].rfind('\n')
+        if split_point == -1:
+            split_point = max_length
+        parts.append(text[:split_point].strip())
+        text = text[split_point:].strip()
+    
+    if text:
+        parts.append(text)
+    
+    return parts
+
 async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать ПОЛНУЮ информацию о специальности"""
     text = update.message.text
@@ -1035,8 +1051,18 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         
-        # Отправляем текст без parse_mode="Markdown" чтобы избежать ошибок
-        await update.message.reply_text(info_text, reply_markup=reply_markup)
+        # Разделяем длинные сообщения на части
+        if len(info_text) > 4000:
+            parts = split_message(info_text, 4000)
+            
+            # Отправляем первое сообщение с клавиатурой
+            await update.message.reply_text(parts[0], reply_markup=reply_markup)
+            
+            # Отправляем остальные части
+            for part in parts[1:]:
+                await update.message.reply_text(part)
+        else:
+            await update.message.reply_text(info_text, reply_markup=reply_markup)
     
     elif text in IT_SPECIALTIES:
         # Если специальность есть в списке, но нет детальной информации
@@ -1055,8 +1081,7 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             info_text,
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            reply_markup=reply_markup
         )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1089,8 +1114,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Всегда показываем основное сообщение с кнопками
     await update.message.reply_text(
         "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        reply_markup=reply_markup
     )
 
 async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1115,8 +1139,7 @@ async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Просто показываем меню с кнопками
     await update.message.reply_text(
         "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        reply_markup=reply_markup
     )
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1129,6 +1152,19 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Изучайте планы обучения 🚀\n\n"
         "👇 Используйте кнопки меню или напишите /start"
     )
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Глобальный обработчик ошибок"""
+    print(f"❌ Ошибка: {context.error}")
+    
+    # Отправляем пользователю сообщение об ошибке
+    if update and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "😔 Произошла ошибка. Попробуйте позже или напишите @krylov19"
+            )
+        except:
+            pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик сообщений"""
@@ -1192,6 +1228,9 @@ def main():
     health_thread.start()
     
     app = Application.builder().token(TOKEN).build()
+    
+    # Добавляем глобальный обработчик ошибок
+    app.add_error_handler(error_handler)
     
     # Добавляем обработчики команд
     app.add_handler(CommandHandler("start", start))
@@ -1259,6 +1298,12 @@ def main():
     print("   • Порт: 8080")
     print("   • Health check: /healthz")
     print("   • Отвечает на запросы Render")
+    print()
+    print("🔄 ОСНОВНЫЕ УЛУЧШЕНИЯ:")
+    print("   • Разделение длинных сообщений (>4000 символов)")
+    print("   • Убран parse_mode='Markdown' для избежания ошибок")
+    print("   • Добавлен глобальный обработчик ошибок")
+    print("   • Улучшена обработка специальных символов")
     print()
     print("=" * 60)
     print("⚡ Бот запущен и готов к работе!")
