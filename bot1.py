@@ -8,7 +8,7 @@ import sys
 import time
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 # Отключаем проверку SSL (решение проблемы с Python из Microsoft Store)
@@ -1054,6 +1054,67 @@ def save_test_result(user_id, results, recommended_specialties, test_time):
     finally:
         conn.close()
 
+def get_statistics():
+    """Получить статистику бота"""
+    try:
+        conn = sqlite3.connect('bot_users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        
+        # Общее количество пользователей
+        cursor.execute('SELECT COUNT(*) FROM users')
+        total_users = cursor.fetchone()[0]
+        
+        # Новые пользователи за последние 7 дней
+        cursor.execute('''
+        SELECT COUNT(*) FROM users 
+        WHERE date(first_visit) >= date('now', '-7 days')
+        ''')
+        new_users_7days = cursor.fetchone()[0]
+        
+        # Активные пользователи за последние 7 дней
+        cursor.execute('''
+        SELECT COUNT(*) FROM users 
+        WHERE date(last_visit) >= date('now', '-7 days')
+        ''')
+        active_users_7days = cursor.fetchone()[0]
+        
+        # Общее количество тестов
+        cursor.execute('SELECT COUNT(*) FROM test_results')
+        total_tests = cursor.fetchone()[0]
+        
+        # Топ-5 популярных специальностей
+        cursor.execute('''
+        SELECT specialty_name, view_count 
+        FROM specialty_stats 
+        ORDER BY view_count DESC 
+        LIMIT 5
+        ''')
+        top_specialties = cursor.fetchall()
+        
+        # Статистика за сегодня
+        today = datetime.now().strftime('%Y-%m-%d')
+        cursor.execute('''
+        SELECT new_users, active_users, total_views 
+        FROM daily_stats 
+        WHERE date = ?
+        ''', (today,))
+        today_stats = cursor.fetchone()
+        
+        conn.close()
+        
+        return {
+            'total_users': total_users,
+            'new_users_7days': new_users_7days,
+            'active_users_7days': active_users_7days,
+            'total_tests': total_tests,
+            'top_specialties': top_specialties,
+            'today_stats': today_stats or (0, 0, 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения статистики: {e}")
+        return None
+
 # ========== ОСНОВНЫЕ ФУНКЦИИ БОТА ==========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1069,19 +1130,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         add_or_update_user(user_data)
         
+        # Создаем инлайн-кнопки для меню (как в крипто-ботах)
         keyboard = [
-            ["🎯 Выбрать специальность", "🧪 Пройти тест"],
-            ["📋 О проекте", "📞 Помощь"]
+            [InlineKeyboardButton("🎯 Выбрать специальность", callback_data="menu_specialties")],
+            [InlineKeyboardButton("🧪 Пройти тест", callback_data="start_test")],
+            [InlineKeyboardButton("📋 О проекте", callback_data="about_project")],
+            [InlineKeyboardButton("📊 Статистика", callback_data="show_stats")]
         ]
         
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
             "🤖 *IT ВЫБОР 2026*\n\n"
             "Добро пожаловать! Я помогу вам выбрать IT-специальность, "
             "которая подходит именно вам.\n\n"
             "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
         logger.info(f"🚀 Старт для пользователя {user.id}")
         
@@ -1089,57 +1154,138 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Ошибка в start: {e}")
         await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
-async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Меню специальностей - компактное отображение"""
+async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать статистику бота"""
     try:
-        # Создаем компактное меню (3 кнопки в ряду)
+        # Получаем статистику
+        stats = get_statistics()
+        
+        if not stats:
+            await update.message.reply_text("❌ Не удалось получить статистику.")
+            return
+        
+        # Форматируем статистику
+        stats_text = "📊 *СТАТИСТИКА БОТА*\n\n"
+        stats_text += f"👥 *Всего пользователей:* {stats['total_users']}\n"
+        stats_text += f"🆕 *Новые за 7 дней:* {stats['new_users_7days']}\n"
+        stats_text += f"🔥 *Активные за 7 дней:* {stats['active_users_7days']}\n"
+        stats_text += f"🧪 *Всего тестов пройдено:* {stats['total_tests']}\n\n"
+        
+        stats_text += "📈 *СЕГОДНЯ*\n"
+        stats_text += f"• Новые: {stats['today_stats'][0]}\n"
+        stats_text += f"• Активные: {stats['today_stats'][1]}\n"
+        stats_text += f"• Просмотры: {stats['today_stats'][2]}\n\n"
+        
+        stats_text += "🏆 *ТОП-5 СПЕЦИАЛЬНОСТЕЙ*\n"
+        for i, (specialty, views) in enumerate(stats['top_specialties'], 1):
+            stats_text += f"{i}. {specialty}: {views} просмотров\n"
+        
+        # Кнопки для админа
+        keyboard = [
+            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh_stats")],
+            [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                stats_text, 
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                stats_text, 
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в show_stats: {e}")
+        error_msg = "❌ Произошла ошибка при получении статистики."
+        if update.callback_query:
+            await update.callback_query.edit_message_text(error_msg)
+        else:
+            await update.message.reply_text(error_msg)
+
+async def show_inline_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, message_text="🎯 *ВЫБЕРИТЕ IT-СПЕЦИАЛЬНОСТЬ:*"):
+    """Показать меню специальностей в виде инлайн-кнопок"""
+    try:
+        # Создаем кнопки для специальностей (по 2 в ряду)
         keyboard = []
         specialties_list = list(IT_SPECIALTIES.keys())
         
-        # Разбиваем на ряды по 3 кнопки
-        for i in range(0, len(specialties_list), 3):
-            row = specialties_list[i:i+3]
-            keyboard.append(row)
+        # Разбиваем на ряды по 2 кнопки
+        for i in range(0, len(specialties_list), 2):
+            row = []
+            if i < len(specialties_list):
+                row.append(InlineKeyboardButton(
+                    specialties_list[i], 
+                    callback_data=f"info_{specialties_list[i]}"
+                ))
+            if i + 1 < len(specialties_list):
+                row.append(InlineKeyboardButton(
+                    specialties_list[i + 1], 
+                    callback_data=f"info_{specialties_list[i + 1]}"
+                ))
+            if row:
+                keyboard.append(row)
         
         # Добавляем навигационные кнопки
-        keyboard.append(["🧪 Пройти тест", "📋 О проекте"])
-        keyboard.append(["🏠 Главная"])
+        keyboard.append([InlineKeyboardButton("🧪 Пройти тест", callback_data="start_test")])
+        keyboard.append([InlineKeyboardButton("📋 О проекте", callback_data="about_project")])
+        keyboard.append([InlineKeyboardButton("🏠 Главная", callback_data="main_menu")])
         
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            "🎯 *ВЫБЕРИТЕ IT-СПЕЦИАЛЬНОСТЬ:*\n\n"
-            f"Всего: *{len(IT_SPECIALTIES)} технических направлений*\n"
-            "📍 *Кликните на специальность, чтобы узнать подробности*\n\n"
-            "🎯 *УЖЕ ДОСТУПНЫ ДЛЯ ИЗУЧЕНИЯ:*\n"
-            "• 🧠 AI/ML-Инженер\n"
-            "• 🌐 Веб-Разработчик\n"
-            "• 🤖 Data-Science\n"
-            "• 🔒 Кибербезопасность\n\n"
-            "*Остальные специальности добавляются постепенно...*",
-            reply_markup=reply_markup
-        )
-        logger.info(f"📱 Меню показано пользователю {update.effective_user.id}")
+        full_text = message_text + "\n\n"
+        full_text += f"Всего: *{len(IT_SPECIALTIES)} технических направлений*\n"
+        full_text += "📍 *Кликните на специальность, чтобы узнать подробности*\n\n"
+        full_text += "🎯 *УЖЕ ДОСТУПНЫ ДЛЯ ИЗУЧЕНИЯ:*\n"
+        full_text += "• 🧠 AI/ML-Инженер\n"
+        full_text += "• 🌐 Веб-Разработчик\n"
+        full_text += "• 🤖 Data-Science\n"
+        full_text += "• 🔒 Кибербезопасность\n\n"
+        full_text += "*Остальные специальности добавляются постепенно...*"
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                full_text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                full_text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в show_menu: {e}")
-        await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+        logger.error(f"❌ Ошибка в show_inline_menu: {e}")
 
 async def show_about_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Информация о проекте"""
     try:
+        # Создаем инлайн-кнопки
         keyboard = [
-            ["🎯 Все специальности", "🧪 Пройти тест"],
-            ["🏠 Главная"]
+            [InlineKeyboardButton("🎯 Все специальности", callback_data="menu_specialties")],
+            [InlineKeyboardButton("🧪 Пройти тест", callback_data="start_test")],
+            [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
         ]
         
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            ABOUT_PROJECT,
-            reply_markup=reply_markup
-        )
-        logger.info(f"📋 О проекте показано пользователю {update.effective_user.id}")
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                ABOUT_PROJECT,
+                reply_markup=reply_markup
+            )
+        else:
+            await update.message.reply_text(
+                ABOUT_PROJECT,
+                reply_markup=reply_markup
+            )
         
     except Exception as e:
         logger.error(f"❌ Ошибка в show_about_project: {e}")
@@ -1147,13 +1293,6 @@ async def show_about_project(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда помощи"""
     try:
-        keyboard = [
-            ["🎯 Выбрать специальность", "📋 О проекте"],
-            ["🏠 Главная"]
-        ]
-        
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        
         help_text = """🤖 IT ВЫБОР 2026
 
 🎯 НАША ГЛАВНАЯ ЦЕЛЬ:
@@ -1171,8 +1310,19 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 В СЛУЧАЕ ВОЗНИКНОВЕНИЯ ПРОБЛЕМ / ПРЕДЛОЖЕНИЙ     
 👨‍💻 Контакт: @krylov19"""
         
-        await update.message.reply_text(help_text, reply_markup=reply_markup)
-        logger.info(f"📞 Помощь показана пользователю {update.effective_user.id}")
+        # Создаем инлайн-кнопки
+        keyboard = [
+            [InlineKeyboardButton("🎯 Все специальности", callback_data="menu_specialties")],
+            [InlineKeyboardButton("📋 О проекте", callback_data="about_project")],
+            [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(help_text, reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(help_text, reply_markup=reply_markup)
         
     except Exception as e:
         logger.error(f"❌ Ошибка в show_help: {e}")
@@ -1195,68 +1345,84 @@ def split_message(text, max_length=4000):
     
     return parts
 
-async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_specialty_info(update: Update, context: ContextTypes.DEFAULT_TYPE, specialty_name):
     """Показать информацию о специальности"""
     try:
-        text = update.message.text
-        
-        if text in SPECIALTY_DETAILS:
-            info_text = SPECIALTY_DETAILS[text]
-            increment_specialty_view(text)
+        if specialty_name in SPECIALTY_DETAILS:
+            info_text = SPECIALTY_DETAILS[specialty_name]
+            increment_specialty_view(specialty_name)
             
             keyboard = [
-                ["🎯 Все специальности", "🧪 Пройти тест"],
-                ["📋 О проекте", "🏠 Главная"]
+                [InlineKeyboardButton("🎯 Все специальности", callback_data="menu_specialties")],
+                [InlineKeyboardButton("🧪 Пройти тест", callback_data="start_test")],
+                [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
             ]
             
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            reply_markup = InlineKeyboardMarkup(keyboard)
             
             if len(info_text) > 4000:
                 parts = split_message(info_text, 4000)
-                await update.message.reply_text(parts[0], reply_markup=reply_markup)
+                # Первое сообщение с клавиатурой
+                await update.callback_query.edit_message_text(parts[0], reply_markup=reply_markup)
+                # Остальные части
                 for part in parts[1:]:
-                    await update.message.reply_text(part)
+                    await update.callback_query.message.reply_text(part)
             else:
-                await update.message.reply_text(info_text, reply_markup=reply_markup)
+                await update.callback_query.edit_message_text(info_text, reply_markup=reply_markup)
             
-            logger.info(f"📚 Информация показана: {text}")
+            logger.info(f"📚 Информация показана: {specialty_name}")
         
-        elif text in IT_SPECIALTIES:
+        elif specialty_name in IT_SPECIALTIES:
             keyboard = [
-                ["🎯 Все специальности", "🧪 Пройти тест"],
-                ["📋 О проекте", "🏠 Главная"]
+                [InlineKeyboardButton("🎯 Все специальности", callback_data="menu_specialties")],
+                [InlineKeyboardButton("🧪 Пройти тест", callback_data="start_test")],
+                [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
             ]
             
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            reply_markup = InlineKeyboardMarkup(keyboard)
             
-            info_text = f"🎯 *{text}*\n\n{INFO_IN_DEVELOPMENT}"
-            increment_specialty_view(text)
+            info_text = f"🎯 *{specialty_name}*\n\n{INFO_IN_DEVELOPMENT}"
+            increment_specialty_view(specialty_name)
             
-            await update.message.reply_text(info_text, reply_markup=reply_markup)
-            logger.info(f"📝 Специальность в разработке: {text}")
+            await update.callback_query.edit_message_text(
+                info_text, 
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+            logger.info(f"📝 Специальность в разработке: {specialty_name}")
             
     except Exception as e:
-        logger.error(f"❌ Ошибка в show_info: {e}")
-        await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+        logger.error(f"❌ Ошибка в show_specialty_info: {e}")
+        await update.callback_query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
 
-async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Переход на главную"""
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать главное меню"""
     try:
+        # Создаем инлайн-кнопки для меню
         keyboard = [
-            ["🎯 Выбрать специальность", "🧪 Пройти тест"],
-            ["📋 О проекте", "📞 Помощь"]
+            [InlineKeyboardButton("🎯 Выбрать специальность", callback_data="menu_specialties")],
+            [InlineKeyboardButton("🧪 Пройти тест", callback_data="start_test")],
+            [InlineKeyboardButton("📋 О проекте", callback_data="about_project")],
+            [InlineKeyboardButton("📊 Статистика", callback_data="show_stats")]
         ]
         
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
-            reply_markup=reply_markup
-        )
-        logger.info(f"🏠 Главная показана пользователю {update.effective_user.id}")
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                "👇 *ВЫБЕРИТЕ ДЕЙСТВИЕ:*",
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в go_home: {e}")
+        logger.error(f"❌ Ошибка в show_main_menu: {e}")
 
 # ========== ФУНКЦИИ ТЕСТА ==========
 
@@ -1269,42 +1435,58 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         progress = get_test_progress(user_id)
         if progress:
             keyboard = [
-                ["Продолжить тест", "Начать заново"],
-                ["🏠 Главная"]
+                [InlineKeyboardButton("Продолжить тест", callback_data="continue_test")],
+                [InlineKeyboardButton("Начать заново", callback_data="restart_test")],
+                [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
             ]
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_text(
-                "📝 У вас есть незавершенный тест.\nХотите продолжить или начать заново?",
-                reply_markup=reply_markup
-            )
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    "📝 У вас есть незавершенный тест.\nХотите продолжить или начать заново?",
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.message.reply_text(
+                    "📝 У вас есть незавершенный тест.\nХотите продолжить или начать заново?",
+                    reply_markup=reply_markup
+                )
             return
         
         # Начинаем новый тест
         keyboard = [
-            ["🔵 Начать тест"],
-            ["🏠 Главная"]
+            [InlineKeyboardButton("🔵 Начать тест", callback_data="begin_test")],
+            [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
         ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            "🧠 *IT ВЫБОР: Тест для выбора IT-профессии*\n\n"
-            "📊 *Структура теста:*\n"
-            "• 12 вопросов по 4 модулям\n"
-            "• Время: 10-15 минут\n"
-            "• Персональные рекомендации\n\n"
-            "🔵 *Модуль 1:* Личные предпочтения\n"
-            "🟢 *Модуль 2:* Навыки и способности\n"
-            "🟡 *Модуль 3:* Практические предпочтения\n"
-            "🔴 *Модуль 4:* Цели и ожидания\n\n"
-            "📝 *После теста вы получите:*\n"
-            "• Подходящие IT-специальности\n"
-            "• Советы по обучению\n"
-            "• Рекомендации по развитию\n\n"
-            "⏱ *Время прохождения: 10-15 минут*",
-            reply_markup=reply_markup
-        )
-        logger.info(f"🧪 Тест показан пользователю {user_id}")
+        test_intro = "🧠 *IT ВЫБОР: Тест для выбора IT-профессии*\n\n"
+        test_intro += "📊 *Структура теста:*\n"
+        test_intro += "• 12 вопросов по 4 модулям\n"
+        test_intro += "• Время: 10-15 минут\n"
+        test_intro += "• Персональные рекомендации\n\n"
+        test_intro += "🔵 *Модуль 1:* Личные предпочтения\n"
+        test_intro += "🟢 *Модуль 2:* Навыки и способности\n"
+        test_intro += "🟡 *Модуль 3:* Практические предпочтения\n"
+        test_intro += "🔴 *Модуль 4:* Цели и ожидания\n\n"
+        test_intro += "📝 *После теста вы получите:*\n"
+        test_intro += "• Подходящие IT-специальности\n"
+        test_intro += "• Советы по обучению\n"
+        test_intro += "• Рекомендации по развитию\n\n"
+        test_intro += "⏱ *Время прохождения: 10-15 минут*"
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                test_intro,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                test_intro,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
         
     except Exception as e:
         logger.error(f"❌ Ошибка в start_test: {e}")
@@ -1313,9 +1495,8 @@ async def handle_test_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик начала теста"""
     try:
         user_id = update.effective_user.id
-        text = update.message.text
         
-        if text == "Начать заново":
+        if update.callback_query.data == "restart_test":
             delete_test_progress(user_id)
         
         # Начинаем тест с первого модуля
@@ -1340,7 +1521,8 @@ async def send_test_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 break
         
         if not question_data:
-            await update.message.reply_text("❌ Ошибка: вопрос не найден")
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Ошибка: вопрос не найден")
             return
         
         # Создаем инлайн-клавиатуру
@@ -1352,12 +1534,15 @@ async def send_test_question(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         # Отправляем вопрос
         module_number = module[-1]  # module1 -> 1, module2 -> 2, etc
-        await update.message.reply_text(
-            f"🔹 *Модуль {module_number}: {module_data['name']}*\n\n"
-            f"{question_data['text']}",
-            reply_markup=reply_markup
-        )
-        logger.info(f"❓ Вопрос отправлен: {module}.{question}")
+        question_text = f"✏️ *Модуль {module_number}: {module_data['name']}*\n\n"
+        question_text += f"{question_data['text']}"
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                question_text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_test_question: {e}")
@@ -1439,10 +1624,13 @@ async def send_test_question_from_query(query, context: ContextTypes.DEFAULT_TYP
         
         # Редактируем сообщение
         module_number = module[-1]
+        question_text = f"✏️ *Модуль {module_number}: {module_data['name']}*\n\n"
+        question_text += f"{question_data['text']}"
+        
         await query.edit_message_text(
-            f"🔹 *Модуль {module_number}: {module_data['name']}*\n\n"
-            f"{question_data['text']}",
-            reply_markup=reply_markup
+            question_text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
         
     except Exception as e:
@@ -1472,10 +1660,11 @@ def calculate_results(answers):
                 elif category in scores:
                     scores[category] += weight
     
-    # Нормализуем баллы до 100
-    max_score = max(scores.values()) if max(scores.values()) > 0 else 1
-    for category in scores:
-        scores[category] = int((scores[category] / max_score) * 100)
+    # Нормализуем баллы до 100 (более четкое распределение)
+    total_score = sum(scores.values())
+    if total_score > 0:
+        for category in scores:
+            scores[category] = int((scores[category] / total_score) * 100)
     
     return scores
 
@@ -1535,18 +1724,23 @@ async def finish_test(query, context: ContextTypes.DEFAULT_TYPE, answers):
         message = "🎉 *ТЕСТ ЗАВЕРШЕН!*\n\n"
         message += "📊 *Ваши результаты:*\n\n"
         
-        # Топ-3 категории
+        # Топ-3 категории с более четким отображением процентов
         top_categories = sorted(results.items(), key=lambda x: x[1], reverse=True)[:3]
         for category, score in top_categories:
-            stars = "⭐" * (score // 20)
-            message += f"• {category.capitalize()}: {score}/100 {stars}\n"
+            # Округляем до целых чисел для лучшего отображения
+            display_score = round(score)
+            # Используем прогресс-бар
+            progress_bar = "▰" * (display_score // 10) + "▱" * (10 - (display_score // 10))
+            message += f"• *{category.capitalize()}*: {display_score}% {progress_bar}\n"
         
         message += "\n🎯 *Рекомендованные специальности:*\n\n"
         
-        # Рекомендации
+        # Рекомендации с улучшенным отображением процентов
         for i, (specialty, score) in enumerate(recommended, 1):
-            match_score = min(100, score)
-            message += f"{i}. *{specialty}* - {match_score}% совпадения\n"
+            match_score = round(min(100, score))
+            # Создаем прогресс-бар для наглядности
+            progress_bar = "▰" * (match_score // 10) + "▱" * (10 - (match_score // 10))
+            message += f"{i}. *{specialty}* - {match_score}% {progress_bar}\n"
         
         message += "\n📈 *Советы по развитию:*\n"
         
@@ -1562,19 +1756,24 @@ async def finish_test(query, context: ContextTypes.DEFAULT_TYPE, answers):
         message += "4. Пройдите тест снова через месяц\n\n"
         message += "👇 *Выберите действие:*"
         
-        keyboard = [
-            ["🎯 Изучить рекомендации", "🧪 Пройти тест заново"],
-            ["📋 О проекте", "🏠 Главная"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        # Создаем кнопки для рекомендаций
+        keyboard = []
+        for specialty, score in recommended:
+            keyboard.append([InlineKeyboardButton(
+                f"📖 {specialty} ({round(min(100, score))}%)", 
+                callback_data=f"info_{specialty}"
+            )])
+        
+        keyboard.append([InlineKeyboardButton("🧪 Пройти тест заново", callback_data="restart_test")])
+        keyboard.append([InlineKeyboardButton("🏠 Главная", callback_data="main_menu")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
         # Редактируем последнее сообщение
-        await query.edit_message_text(message)
-        
-        # Отправляем новое сообщение с клавиатурой
-        await query.message.reply_text(
-            "Вы можете изучить рекомендованные специальности или пройти тест заново:",
-            reply_markup=reply_markup
+        await query.edit_message_text(
+            message,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
         
         logger.info(f"✅ Тест завершен для пользователя {user_id}")
@@ -1583,42 +1782,20 @@ async def finish_test(query, context: ContextTypes.DEFAULT_TYPE, answers):
         logger.error(f"❌ Ошибка в finish_test: {e}")
         await query.edit_message_text("❌ Произошла ошибка при обработке результатов теста.")
 
-async def show_test_recommendations(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать рекомендованные специальности"""
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик callback query"""
     try:
-        await update.message.reply_text(
-            "🎯 Чтобы получить персональные рекомендации, пройдите тест!\n\n"
-            "👇 Нажмите на кнопку ниже:",
-            reply_markup=ReplyKeyboardMarkup([["🧪 Пройти тест", "🏠 Главная"]], resize_keyboard=True)
-        )
+        query = update.callback_query
+        data = query.data
         
-    except Exception as e:
-        logger.error(f"❌ Ошибка в show_test_recommendations: {e}")
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик сообщений"""
-    try:
-        text = update.message.text
+        if data == "menu_specialties":
+            await show_inline_menu(update, context)
         
-        logger.info(f"📩 Сообщение от {update.effective_user.id}: {text}")
-        
-        if text == "🎯 Выбрать специальность":
-            await show_menu(update, context)
-        
-        elif text == "🎯 Все специальности":
-            await show_menu(update, context)
-        
-        elif text == "🎯 Изучить рекомендации":
-            await show_test_recommendations(update, context)
-        
-        elif text == "🧪 Пройти тест":
+        elif data == "start_test":
             await start_test(update, context)
         
-        elif text == "🔵 Начать тест":
-            await handle_test_start(update, context)
-        
-        elif text == "Продолжить тест":
-            progress = get_test_progress(update.effective_user.id)
+        elif data == "continue_test":
+            progress = get_test_progress(query.from_user.id)
             if progress:
                 await send_test_question(update, context, 
                                        progress['current_module'], 
@@ -1626,32 +1803,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await start_test(update, context)
         
-        elif text == "Начать заново":
-            delete_test_progress(update.effective_user.id)
+        elif data == "begin_test" or data == "restart_test":
             await handle_test_start(update, context)
         
-        elif text == "🧪 Пройти тест заново":
-            delete_test_progress(update.effective_user.id)
-            await start_test(update, context)
-        
-        elif text == "📋 О проекте":
+        elif data == "about_project":
             await show_about_project(update, context)
         
-        elif text == "📞 Помощь":
-            await show_help(update, context)
+        elif data == "show_stats":
+            await show_stats(update, context)
         
-        elif text == "🏠 Главная":
-            await go_home(update, context)
+        elif data == "refresh_stats":
+            await show_stats(update, context)
         
-        elif text in IT_SPECIALTIES:
-            await show_info(update, context)
+        elif data == "main_menu":
+            await show_main_menu(update, context)
+        
+        elif data.startswith("info_"):
+            specialty_name = data[5:]  # Убираем "info_"
+            await show_specialty_info(update, context, specialty_name)
+        
+        elif data.startswith("test_"):
+            await handle_test_answer(update, context)
         
         else:
-            await go_home(update, context)
-            
+            await query.answer("Команда не распознана")
+        
     except Exception as e:
-        logger.error(f"❌ Ошибка в handle_message: {e}")
-        await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+        logger.error(f"❌ Ошибка в handle_callback_query: {e}")
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /stats для администраторов"""
+    try:
+        user_id = update.effective_user.id
+        
+        # Проверяем, является ли пользователь администратором (можно настроить список админов)
+        ADMIN_IDS = []  # Добавьте сюда ID администраторов, например: [123456789, 987654321]
+        
+        if user_id not in ADMIN_IDS:
+            await update.message.reply_text("❌ У вас нет доступа к этой команде.")
+            return
+        
+        await show_stats(update, context)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в stats_command: {e}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Глобальный обработчик ошибок"""
@@ -1659,10 +1854,22 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"🔥 Ошибка в обработчике: {context.error}")
         
         if update and update.effective_message:
-            await update.effective_message.reply_text(
-                "😔 Произошла ошибка. Попробуйте позже или напишите @krylov19",
-                reply_markup=ReplyKeyboardMarkup([["🏠 Главная"]], resize_keyboard=True)
-            )
+            # Создаем кнопки для возврата
+            keyboard = [
+                [InlineKeyboardButton("🏠 Главная", callback_data="main_menu")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    "😔 Произошла ошибка. Попробуйте позже или напишите @krylov19",
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.effective_message.reply_text(
+                    "😔 Произошла ошибка. Попробуйте позже или напишите @krylov19",
+                    reply_markup=reply_markup
+                )
     except Exception as e:
         logger.error(f"🔥 Ошибка в обработчике ошибок: {e}")
 
@@ -1687,13 +1894,10 @@ def main():
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("help", show_help))
         app.add_handler(CommandHandler("about", show_about_project))
-        app.add_handler(CommandHandler("menu", show_menu))
+        app.add_handler(CommandHandler("stats", stats_command))
         
-        # Добавляем обработчик callback query (для теста)
-        app.add_handler(CallbackQueryHandler(handle_test_answer, pattern="^test_"))
-        
-        # Обработчик текстовых сообщений
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        # Добавляем обработчик callback query
+        app.add_handler(CallbackQueryHandler(handle_callback_query))
         
         # Запускаем бота
         logger.info("=" * 60)
